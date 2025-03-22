@@ -22,7 +22,7 @@ Bu proje, kuaför salonları için online randevu sistemi sağlar.
 
 1. Repoyu klonlayın
 ```bash
-git clone https://github.com/kullanıcı-adınız/kuafor-randevu.git
+git clone https://github.com/erdogancimen/kuafor-randevu-sistemi 
 cd kuafor-randevu
 ```
 

@@ -10,7 +10,7 @@ import { searchSalons } from '@/lib/firebase/db';
 import { FaHome, FaSearch, FaMapMarkerAlt, FaStar } from 'react-icons/fa';
 
 export default function Home() {
-  const { user, logout } = useAuth();
+  const { user, signOut } = useAuth();
   const [activeForm, setActiveForm] = useState<'login' | 'userRegister' | 'salonRegister' | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState<'ALL' | 'MEN' | 'WOMEN' | 'BOTH'>('ALL');
@@ -40,7 +40,7 @@ export default function Home() {
 
   const handleLogout = async () => {
     try {
-      await logout();
+      await signOut();
       setActiveForm(null);
     } catch (error) {
       console.error('Çıkış yapılırken hata:', error);
@@ -210,7 +210,7 @@ export default function Home() {
                        salon.salonType === 'WOMEN' ? 'Kadın Kuaförü' : 'Karma Kuaför'}
                     </span>
                     <button
-                      onClick={() => {/* TODO: Randevu sayfasına yönlendir */}}
+                      onClick={() => window.location.href = `/salon/${salon.id}`}
                       className="btn btn-primary"
                     >
                       Randevu Al

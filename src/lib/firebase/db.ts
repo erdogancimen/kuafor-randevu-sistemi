@@ -8,16 +8,21 @@ import {
   where,
   getDocs,
   Timestamp,
-  serverTimestamp
+  serverTimestamp,
+  addDoc,
+  orderBy
 } from 'firebase/firestore';
-import { db } from './firebase-config';
+import { db } from '@/lib/firebase/firebase';
 import { 
   User, 
   Salon, 
   SalonRegistrationData, 
   UserRegistrationData,
   Service,
-  Barber
+  Barber,
+  Appointment,
+  AppointmentStatus,
+  UserRole
 } from '@/types/firebase';
 
 // Kullanıcı işlemleri
@@ -65,9 +70,26 @@ export const createSalon = async (userId: string, salonData: SalonRegistrationDa
 };
 
 export const getSalon = async (salonId: string) => {
-  const salonDoc = await getDoc(doc(db, 'salons', salonId));
-  if (!salonDoc.exists()) return null;
-  return { id: salonDoc.id, ...salonDoc.data() } as Salon;
+  if (!salonId) {
+    throw new Error('Salon ID gerekli');
+  }
+
+  try {
+    const salonRef = doc(db, 'salons', salonId);
+    const salonDoc = await getDoc(salonRef);
+
+    if (!salonDoc.exists()) {
+      return null;
+    }
+
+    return {
+      id: salonDoc.id,
+      ...salonDoc.data()
+    } as Salon;
+  } catch (error) {
+    console.error('Salon bilgileri getirilirken hata:', error);
+    throw error;
+  }
 };
 
 export const updateSalon = async (salonId: string, updateData: Partial<Salon>) => {
@@ -82,13 +104,14 @@ export const updateSalon = async (salonId: string, updateData: Partial<Salon>) =
 // Kuaför arama işlemleri
 export const searchSalons = async (salonType?: string, searchTerm?: string) => {
   try {
-    let q = collection(db, 'salons');
+    const collectionRef = collection(db, 'salons');
     
-    if (salonType && salonType !== 'ALL') {
-      q = query(q, where('salonType', '==', salonType));
-    }
+    // Base query oluştur
+    let queryRef = salonType && salonType !== 'ALL' 
+      ? query(collectionRef, where('salonType', '==', salonType))
+      : query(collectionRef);
 
-    const querySnapshot = await getDocs(q);
+    const querySnapshot = await getDocs(queryRef);
     const salons: Salon[] = [];
 
     querySnapshot.forEach((doc) => {
@@ -105,4 +128,194 @@ export const searchSalons = async (salonType?: string, searchTerm?: string) => {
     console.error('Kuaförler yüklenirken hata:', error);
     return [];
   }
-}; 
+};
+
+// Randevu oluştur
+export const createAppointment = async (appointmentData: Omit<Appointment, 'id' | 'createdAt'>) => {
+  try {
+    // Önce kuaför bilgilerini kontrol et
+    const salon = await getSalon(appointmentData.salonId);
+    if (!salon) {
+      throw new Error('Kuaför bulunamadı');
+    }
+
+    // Randevu çakışması kontrolü
+    const existingAppointment = await checkExistingAppointment(
+      appointmentData.salonId,
+      appointmentData.barberId,
+      appointmentData.date
+    );
+
+    if (existingAppointment) {
+      throw new Error('Bu saatte başka bir randevu bulunmaktadır');
+    }
+
+    const appointmentRef = collection(db, 'appointments');
+    const newAppointment = {
+      ...appointmentData,
+      createdAt: serverTimestamp(),
+      status: 'PENDING' as AppointmentStatus
+    };
+
+    const docRef = await addDoc(appointmentRef, newAppointment);
+    return {
+      id: docRef.id,
+      ...newAppointment
+    };
+  } catch (error) {
+    console.error('Randevu oluşturulurken hata:', error);
+    throw error;
+  }
+};
+
+// Randevu çakışması kontrolü
+const checkExistingAppointment = async (
+  salonId: string,
+  barberId: string,
+  date: Timestamp
+) => {
+  try {
+    const appointmentsRef = collection(db, 'appointments');
+    const q = query(
+      appointmentsRef,
+      where('salonId', '==', salonId),
+      where('barberId', '==', barberId),
+      where('date', '==', date),
+      where('status', 'in', ['PENDING', 'CONFIRMED'])
+    );
+
+    const querySnapshot = await getDocs(q);
+    return !querySnapshot.empty;
+  } catch (error) {
+    console.error('Randevu kontrolü yapılırken hata:', error);
+    throw error;
+  }
+};
+
+// Belirli bir gün için randevuları getiren fonksiyon
+export const getAppointmentsForDay = async (
+  salonId: string,
+  barberId: string,
+  date: Date
+): Promise<Appointment[]> => {
+  try {
+    // Seçilen günün başlangıç ve bitiş zamanlarını ayarla
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    // Firestore sorgusu
+    const appointmentsRef = collection(db, 'appointments');
+    const q = query(
+      appointmentsRef,
+      where('salonId', '==', salonId),
+      where('barberId', '==', barberId),
+      where('date', '>=', Timestamp.fromDate(startOfDay)),
+      where('date', '<=', Timestamp.fromDate(endOfDay)),
+      orderBy('date', 'asc')
+    );
+
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    })) as Appointment[];
+  } catch (error) {
+    console.error('Randevular getirilirken hata:', error);
+    throw error;
+  }
+};
+
+// Berber randevularını getir
+export const getBarberAppointments = async (salonId: string | undefined) => {
+  if (!salonId) {
+    throw new Error('Salon ID\'si gerekli');
+  }
+
+  try {
+    const appointmentsRef = collection(db, 'appointments');
+    const today = Timestamp.fromDate(new Date());
+
+    // Sorguyu basitleştirelim
+    const q = query(
+      appointmentsRef,
+      where('salonId', '==', salonId),
+      orderBy('date', 'asc')
+    );
+
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    })) as Appointment[];
+  } catch (error) {
+    console.error('Berber randevuları getirilirken hata:', error);
+    throw error;
+  }
+};
+
+export async function updateAppointmentStatus(
+  appointmentId: string, 
+  status: AppointmentStatus
+) {
+  try {
+    const appointmentRef = doc(db, 'appointments', appointmentId);
+    await updateDoc(appointmentRef, { status });
+  } catch (error) {
+    console.error('Randevu durumu güncellenirken hata:', error);
+    throw error;
+  }
+}
+
+// Users koleksiyonu için tip tanımı
+interface UserData {
+  email: string;
+  role: UserRole;
+  firstName?: string;
+  lastName?: string;
+  phoneNumber?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export async function createUserWithRole(uid: string, email: string, role: UserRole) {
+  try {
+    // Users koleksiyonunda yeni bir döküman oluştur
+    const userRef = doc(db, 'users', uid);
+    
+    const userData: UserData = {
+      email,
+      role,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+
+    // Dökümanı oluştur veya güncelle
+    await setDoc(userRef, userData);
+    
+    console.log('Kullanıcı başarıyla oluşturuldu:', uid);
+    return userData;
+  } catch (error) {
+    console.error('Kullanıcı oluşturulurken hata:', error);
+    throw error;
+  }
+}
+
+// Kullanıcı rolünü kontrol etmek için fonksiyon
+export async function getUserRole(uid: string): Promise<UserRole | null> {
+  try {
+    const userRef = doc(db, 'users', uid);
+    const userSnap = await getDoc(userRef);
+    
+    if (userSnap.exists()) {
+      const userData = userSnap.data() as UserData;
+      return userData.role;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Kullanıcı rolü kontrol edilirken hata:', error);
+    throw error;
+  }
+} 

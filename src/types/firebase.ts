@@ -1,6 +1,7 @@
 import { Timestamp } from 'firebase/firestore';
+import { User as FirebaseUser } from 'firebase/auth';
 
-export type UserRole = 'USER' | 'SALON' | 'ADMIN';
+export type UserRole = 'USER' | 'SALON';
 export type SalonType = 'MEN' | 'WOMEN' | 'BOTH';
 export type AppointmentStatus = 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED';
 
@@ -18,6 +19,10 @@ export interface Barber {
   email: string;
   address: string;
   services: Service[];
+}
+
+export interface CustomUser extends FirebaseUser {
+  role?: UserRole;
 }
 
 export interface User {
@@ -53,11 +58,11 @@ export interface Appointment {
   userId: string;
   barberId: string;
   serviceId: string;
-  date: Timestamp;
+  date: any;
   status: AppointmentStatus;
-  price: number;
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
+  createdAt: any;
+  customerName?: string;
+  serviceName?: string;
 }
 
 export interface Review {

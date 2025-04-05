@@ -13,40 +13,73 @@ import {
   signInWithPhoneNumber,
   UserCredential
 } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db } from '@/lib/firebase';
+import { useRouter } from 'next/navigation';
+import { CustomUser, UserRole } from '@/types/firebase';
 
-interface AuthContextType {
-  user: User | null;
+export interface AuthContextType {
+  user: CustomUser | null;
   loading: boolean;
   signUp: (email: string, password: string, displayName?: string) => Promise<UserCredential>;
   signIn: (email: string, password: string) => Promise<UserCredential>;
   signInWithPhone: (phoneNumber: string) => Promise<any>;
-  logout: () => Promise<void>;
+  signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextType | null>(null);
+export const AuthContext = createContext<AuthContextType>({
+  user: null,
+  loading: true,
+  signUp: async () => { throw new Error('Not implemented') },
+  signIn: async () => { throw new Error('Not implemented') },
+  signInWithPhone: async () => { throw new Error('Not implemented') },
+  signOut: async () => { throw new Error('Not implemented') },
+  resetPassword: async () => { throw new Error('Not implemented') }
+});
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<CustomUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+          const userData = userDoc.data();
+          
+          const customUser = firebaseUser as CustomUser;
+          customUser.role = userData?.role as UserRole;
+          
+          setUser(customUser);
+
+          if (customUser.role === 'SALON') {
+            router.push('/salon/dashboard');
+          } else if (customUser.role === 'USER') {
+            router.push('/');
+          }
+        } catch (error) {
+          console.error('Kullanıcı rolü yüklenirken hata:', error);
+          setUser(null);
+        }
+      } else {
+        setUser(null);
+      }
       setLoading(false);
     });
 
     return unsubscribe;
-  }, []);
+  }, [router]);
 
-  async function signUp(email: string, password: string, displayName?: string): Promise<UserCredential> {
+  const signUp = async (email: string, password: string, displayName?: string): Promise<UserCredential> => {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     if (displayName && userCredential.user) {
       await updateProfile(userCredential.user, { displayName });
     }
     return userCredential;
-  }
+  };
 
   const signIn = async (email: string, password: string): Promise<UserCredential> => {
     return signInWithEmailAndPassword(auth, email, password);
@@ -57,21 +90,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!window.recaptchaVerifier) {
         window.recaptchaVerifier = new RecaptchaVerifier('recaptcha-container', {
           size: 'invisible',
-          callback: () => {
-            // reCAPTCHA solved, allow signInWithPhoneNumber.
-          },
+          callback: () => {},
         }, auth);
       }
-      
       return signInWithPhoneNumber(auth, phoneNumber, window.recaptchaVerifier);
     } catch (error) {
       throw error;
     }
   };
 
-  const logout = async () => {
+  const signOutUser = async () => {
     try {
       await signOut(auth);
+      router.push('/login');
     } catch (error) {
       throw error;
     }
@@ -85,14 +116,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const value = {
+  const value: AuthContextType = {
     user,
     loading,
     signUp,
     signIn,
     signInWithPhone,
-    logout,
-    resetPassword,
+    signOut: signOutUser,
+    resetPassword
   };
 
   return (
@@ -103,15 +134,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 }
 
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
-}
+export const useAuth = () => useContext(AuthContext);
 
-// Add RecaptchaVerifier to the window object
 declare global {
   interface Window {
     recaptchaVerifier: RecaptchaVerifier;

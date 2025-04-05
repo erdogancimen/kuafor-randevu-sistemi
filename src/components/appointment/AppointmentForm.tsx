@@ -11,7 +11,7 @@ interface AppointmentFormProps {
   userId: string;
 }
 
-// Türkçe gün isimleri
+
 const DAYS = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
 
 // Çalışma saatleri
@@ -21,10 +21,9 @@ const HOURS = [
   '15:00', '15:30', '16:00', '16:30', '17:00', '17:30'
 ];
 
-// Tip tanımlaması ekleyelim
+
 type AppointmentStatus = 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED';
 
-// LocalAppointment olarak yeniden adlandırıyoruz
 interface LocalAppointment {
   id: string;
   salonId: string;
@@ -53,7 +52,6 @@ export default function AppointmentForm({ salon, userId }: AppointmentFormProps)
       const weeks: Date[][] = [];
       let currentDate = new Date(today);
 
-      // Pazartesi gününe ayarla
       const day = currentDate.getDay();
       const diff = day === 0 ? 1 : (1 - day);
       currentDate.setDate(currentDate.getDate() + diff);
@@ -86,7 +84,7 @@ export default function AppointmentForm({ salon, userId }: AppointmentFormProps)
           setAppointments(dayAppointments);
         } catch (error) {
           console.error('Randevular getirilirken hata:', error);
-          // Hata durumunda boş array set edelim
+          
           setAppointments([]);
         }
       }
@@ -162,13 +160,13 @@ export default function AppointmentForm({ salon, userId }: AppointmentFormProps)
     // Mevcut randevuları kontrol et
     return !appointments.some(apt => {
       const aptDate = new Date(apt.date.seconds * 1000);
-      // PENDING veya CONFIRMED durumundaki randevuları kontrol et
+     
       return (aptDate.getTime() === slotDate.getTime() && 
              (apt.status === 'PENDING' || apt.status === 'CONFIRMED'));
     });
   };
 
-  // Salon verisi yüklenene kadar loading göster
+
   if (!salon || !salon.barbers || !salon.services) {
     return <div>Yükleniyor...</div>;
   }

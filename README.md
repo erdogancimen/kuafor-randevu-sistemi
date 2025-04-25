@@ -35,4 +35,4 @@ npm run dev
 
 ## Geliştirme
 
-Her bir proje kendi klasöründe bağımsız olarak geliştirilebilir. Ortak konfigürasyonlar ve paylaşılan kodlar için `shared` klasörü kullanılabilir. 
+Her bir proje kendi klasöründe bağımsız olarak geliştirilebilir. Ortak konfigürasyonlar ve paylaşılan kodlar için `shared` klasörü kullanılabilir.

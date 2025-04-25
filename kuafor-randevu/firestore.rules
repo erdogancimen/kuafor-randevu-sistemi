@@ -1,0 +1,96 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Kullanıcı doğrulama kontrolü
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Kullanıcı kendi verilerine erişebilir
+    function isUser(userId) {
+      return request.auth.uid == userId;
+    }
+    
+    // Kuaför kendi verilerine erişebilir
+    function isBarber(barberId) {
+      return request.auth.uid == barberId;
+    }
+    
+    // Kuaför çalışanı kendi verilerine erişebilir
+    function isBarberEmployee(employeeId) {
+      return request.auth.uid == employeeId;
+    }
+
+    // Users koleksiyonu
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if true;
+      allow update, delete: if isUser(userId);
+    }
+
+    // Barbers koleksiyonu
+    match /barbers/{barberId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isBarber(barberId);
+    }
+
+    // BarberEmployees koleksiyonu
+    match /barberEmployees/{employeeId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isBarberEmployee(employeeId);
+    }
+
+    // Appointments koleksiyonu
+    match /appointments/{appointmentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (
+        isUser(resource.data.customerId) || 
+        isBarber(resource.data.barberId) ||
+        isBarberEmployee(resource.data.employeeId)
+      );
+      allow delete: if isAuthenticated() && (
+        isUser(resource.data.customerId) || 
+        isBarber(resource.data.barberId)
+      );
+    }
+
+    // Reviews koleksiyonu
+    match /reviews/{reviewId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isUser(resource.data.userId);
+    }
+
+    // Messages koleksiyonu
+    match /messages/{messageId} {
+      allow read: if isAuthenticated() && (
+        isUser(resource.data.senderId) || 
+        isUser(resource.data.receiverId) ||
+        isBarber(resource.data.senderId) ||
+        isBarber(resource.data.receiverId) ||
+        isBarberEmployee(resource.data.senderId) ||
+        isBarberEmployee(resource.data.receiverId)
+      );
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && (
+        isUser(resource.data.senderId) || 
+        isBarber(resource.data.senderId) ||
+        isBarberEmployee(resource.data.senderId)
+      );
+    }
+
+    // Services koleksiyonu
+    match /services/{serviceId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && (
+        isBarber(resource.data.barberId) ||
+        isBarberEmployee(resource.data.employeeId)
+      );
+    }
+  }
+} 

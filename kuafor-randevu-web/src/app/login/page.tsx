@@ -6,22 +6,57 @@ import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '@/config/firebase';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
+import { getDoc, doc } from 'firebase/firestore';
+import { db } from '@/config/firebase';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const router = useRouter();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
+    setLoading(true);
+
     try {
-      setLoading(true);
-      await signInWithEmailAndPassword(auth, email, password);
-      toast.success('Giriş başarılı!');
-      router.push('/dashboard');
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+
+      // Kullanıcı rolünü kontrol et
+      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      if (!userDoc.exists()) {
+        throw new Error('Kullanıcı bilgileri bulunamadı');
+      }
+
+      const userData = userDoc.data();
+      
+      // Kuaför ise kuaför profil sayfasına yönlendir
+      if (userData.role === 'barber') {
+        router.push('/barber/profile');
+      } else {
+        router.push('/');
+      }
     } catch (error: any) {
-      toast.error('Giriş başarısız: ' + error.message);
+      console.error('Error logging in:', error);
+      let errorMessage = 'Giriş yapılırken bir hata oluştu';
+      
+      if (error.code === 'auth/invalid-credential') {
+        errorMessage = 'E-posta veya şifre hatalı';
+      } else if (error.code === 'auth/user-not-found') {
+        errorMessage = 'Bu e-posta adresi ile kayıtlı kullanıcı bulunamadı';
+      } else if (error.code === 'auth/wrong-password') {
+        errorMessage = 'Şifre hatalı';
+      } else if (error.code === 'auth/too-many-requests') {
+        errorMessage = 'Çok fazla başarısız giriş denemesi. Lütfen daha sonra tekrar deneyin';
+      } else if (error.code === 'auth/user-disabled') {
+        errorMessage = 'Bu hesap devre dışı bırakılmış';
+      }
+      
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }

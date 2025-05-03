@@ -19,7 +19,7 @@ export default function CustomerDashboard() {
         // Yaklaşan randevuları getir
         const appointmentsQuery = query(
           collection(db, 'appointments'),
-          where('userId', '==', currentUser?.id),
+          where('userId', '==', currentUser?.uid),
           where('status', 'in', ['pending', 'confirmed']),
           orderBy('date', 'asc'),
           limit(5)

@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Kuafor Randevu",
+    "name": "kuafor-randevu-mobile",
     "slug": "kuafor-randevu-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -9,25 +9,21 @@
       "**/*"
     ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.anonymous.kuaforrandevumobile"
     },
     "android": {
       "package": "com.anonymous.kuaforrandevumobile"
     },
-    "plugins": [
-      "expo-router"
-    ],
     "scheme": "kuafor-randevu",
+    "newArchEnabled": true,
     "extra": {
-      "firebase": {
-        "apiKey": "AIzaSyCxn28upfPJbYRljb1k8d1AvJe_FmcyGVU",
-        "authDomain": "kufaor-randevu.firebaseapp.com",
-        "projectId": "kufaor-randevu",
-        "storageBucket": "kufaor-randevu.firebasestorage.app",
-        "messagingSenderId": "458781052508",
-        "appId": "1:458781052508:web:6f63c8dc3373aa15d2a099"
-        }
-    },
-    "newArchEnabled": true
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "your-project-id"
+      }
+    }
   }
 }

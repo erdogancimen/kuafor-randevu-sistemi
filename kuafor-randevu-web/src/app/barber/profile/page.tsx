@@ -4,86 +4,85 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { auth, db } from '@/config/firebase';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import { updateProfile, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
-import { User, Calendar, Bell, Lock, Edit2, X, Check, Menu, LogOut } from 'lucide-react';
+import { updateProfile, updatePassword, EmailAuthProvider, reauthenticateWithCredential, onAuthStateChanged, signOut } from 'firebase/auth';
+import { User, Calendar, Bell, Lock, Edit2, X, Check, Menu, LogOut, Loader2, MapPin, Phone, Mail, Clock, Scissors, Users, Settings } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import Image from 'next/image';
 
 interface BarberProfile {
-  displayName: string;
+  name: string;
   email: string;
-  phone?: string;
-  address?: string;
-  photoURL?: string;
-  notifications: {
-    email: boolean;
-    push: boolean;
-    sms: boolean;
+  phone: string;
+  address: string;
+  workingHours: {
+    [key: string]: { start: string; end: string; isClosed?: boolean };
   };
-  type: 'male' | 'female' | 'mixed';
   services: {
     name: string;
     price: number;
+    duration: number;
   }[];
+  photoURL: string;
 }
 
-export default function BarberProfilePage() {
-  const router = useRouter();
-  const [user, setUser] = useState<any>(null);
+interface Service {
+  name: string;
+  price: number;
+  duration: number;
+}
+
+export default function BarberProfile() {
   const [profile, setProfile] = useState<BarberProfile | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
-  const [isEditingPassword, setIsEditingPassword] = useState(false);
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(true);
-  const [showMenu, setShowMenu] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [isEditingServices, setIsEditingServices] = useState(false);
-  const [newService, setNewService] = useState({ name: '', price: '' });
-  const [editingServiceIndex, setEditingServiceIndex] = useState<number | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [newService, setNewService] = useState<Service>({
+    name: '',
+    price: 0,
+    duration: 30
+  });
+  const [editedProfile, setEditedProfile] = useState<Partial<BarberProfile>>({});
+  const router = useRouter();
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(async (authUser) => {
-      try {
-        if (!authUser) {
-          router.push('/login');
-          return;
-        }
-
-        setUser(authUser);
-        const userDoc = await getDoc(doc(db, 'users', authUser.uid));
-        
-        if (!userDoc.exists()) {
-          setError('Kullanıcı bilgileri bulunamadı');
-          router.push('/login');
-          return;
-        }
-
-        const userData = userDoc.data();
-        if (userData.role !== 'barber') {
-          setError('Bu sayfaya erişim yetkiniz yok');
-          router.push('/');
-          return;
-        }
-
-        setProfile({
-          displayName: userData.displayName || authUser.displayName || '',
-          email: authUser.email || '',
-          phone: userData.phone || '',
-          address: userData.address || '',
-          photoURL: userData.photoURL || authUser.photoURL || '',
-          notifications: {
-            email: userData.notifications?.email ?? true,
-            push: userData.notifications?.push ?? true,
-            sms: userData.notifications?.sms ?? true
-          },
-          type: userData.type || 'mixed',
-          services: userData.services || []
-        });
-      } catch (err) {
-        console.error('Error loading user data:', err);
-        setError('Kullanıcı bilgileri yüklenirken bir hata oluştu');
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
         router.push('/login');
+        return;
+      }
+
+      try {
+        const docRef = doc(db, 'users', user.uid);
+        const docSnap = await getDoc(docRef);
+
+        if (docSnap.exists() && docSnap.data().role === 'barber') {
+          const userData = docSnap.data();
+          // Varsayılan değerleri ayarla
+          const defaultProfile: BarberProfile = {
+            name: userData.name || user.displayName || '',
+            email: userData.email || user.email || '',
+            phone: userData.phone || '',
+            address: userData.address || '',
+            workingHours: userData.workingHours || {
+              'Pazartesi': { start: '09:00', end: '18:00' },
+              'Salı': { start: '09:00', end: '18:00' },
+              'Çarşamba': { start: '09:00', end: '18:00' },
+              'Perşembe': { start: '09:00', end: '18:00' },
+              'Cuma': { start: '09:00', end: '18:00' },
+              'Cumartesi': { start: '10:00', end: '16:00' },
+              'Pazar': { start: '00:00', end: '00:00', isClosed: true }
+            },
+            services: userData.services || [],
+            photoURL: userData.photoURL || user.photoURL || '/images/default-barber.jpg'
+          };
+          setProfile(defaultProfile);
+        } else {
+          router.push('/');
+        }
+      } catch (error) {
+        console.error('Error fetching profile:', error);
+        toast.error('Profil bilgileri yüklenirken bir hata oluştu');
       } finally {
         setLoading(false);
       }
@@ -92,619 +91,551 @@ export default function BarberProfilePage() {
     return () => unsubscribe();
   }, [router]);
 
-  const handleUpdateProfile = async () => {
-    if (!user || !profile) return;
-
+  const handleSignOut = async () => {
     try {
-      await updateProfile(user, {
-        displayName: profile.displayName,
-        photoURL: profile.photoURL
+      await signOut(auth);
+      toast.success('Başarıyla çıkış yapıldı');
+      router.push('/');
+    } catch (error) {
+      console.error('Error signing out:', error);
+      toast.error('Çıkış yapılırken bir hata oluştu');
+    }
+  };
+
+  const handleUpdateProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!profile) return;
+
+    setLoading(true);
+    try {
+      const user = auth.currentUser;
+      if (!user) throw new Error('Kullanıcı bulunamadı');
+
+      const docRef = doc(db, 'users', user.uid);
+      await updateDoc(docRef, {
+        ...profile,
+        updatedAt: new Date().toISOString(),
       });
 
-      await updateDoc(doc(db, 'users', user.uid), {
-        displayName: profile.displayName,
-        phone: profile.phone || '',
-        address: profile.address || '',
-        photoURL: profile.photoURL || '',
-        type: profile.type,
-        services: profile.services,
-        notifications: profile.notifications
-      });
-
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
-        setProfile(prev => ({
-          ...prev!,
-          phone: userData.phone || '',
-          address: userData.address || '',
-          type: userData.type || 'mixed',
-          services: userData.services || []
-        }));
-      }
-
-      setIsEditing(false);
-      setIsEditingServices(false);
       toast.success('Profil başarıyla güncellendi');
+      setEditing(false);
+      setEditingProfile(false);
     } catch (error) {
       console.error('Error updating profile:', error);
       toast.error('Profil güncellenirken bir hata oluştu');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleUpdatePassword = async () => {
-    if (!user?.email) {
-      toast.error('Kullanıcı bilgileri eksik');
-      return;
-    }
-
-    if (!currentPassword || !newPassword || newPassword !== confirmPassword) {
-      toast.error('Lütfen tüm alanları doldurun ve şifrelerin eşleştiğinden emin olun');
-      return;
-    }
-
-    if (newPassword.length < 6) {
-      toast.error('Yeni şifre en az 6 karakter olmalıdır');
-      return;
-    }
-
-    try {
-      const credential = EmailAuthProvider.credential(user.email, currentPassword);
-      await reauthenticateWithCredential(user, credential);
-      await updatePassword(user, newPassword);
-
-      await auth.signOut();
-      router.push('/login');
-      toast.success('Şifre başarıyla güncellendi. Lütfen yeni şifrenizle tekrar giriş yapın.');
-    } catch (error: any) {
-      console.error('Error updating password:', error);
-      if (error.code === 'auth/invalid-credential') {
-        toast.error('Mevcut şifre yanlış');
-      } else if (error.code === 'auth/requires-recent-login') {
-        toast.error('Şifre değiştirmek için lütfen tekrar giriş yapın');
-        router.push('/login');
-      } else {
-        toast.error('Şifre güncellenirken bir hata oluştu');
-      }
-    }
-  };
-
-  const handleUpdateNotifications = async (type: 'email' | 'push' | 'sms') => {
-    if (!user || !profile) return;
-
-    try {
-      const updatedNotifications = {
-        ...profile.notifications,
-        [type]: !profile.notifications[type]
-      };
-
-      await updateDoc(doc(db, 'users', user.uid), {
-        notifications: updatedNotifications
-      });
-
-      setProfile({
-        ...profile,
-        notifications: updatedNotifications
-      });
-
-      toast.success('Bildirim tercihleri güncellendi');
-    } catch (error) {
-      console.error('Error updating notifications:', error);
-      toast.error('Bildirim tercihleri güncellenirken bir hata oluştu');
-    }
+  const handleProfileChange = (field: keyof BarberProfile, value: string) => {
+    if (!profile) return;
+    setProfile({
+      ...profile,
+      [field]: value
+    });
   };
 
   const handleAddService = () => {
-    if (!newService.name || !newService.price) {
-      toast.error('Lütfen hizmet adı ve fiyatını girin');
-      return;
-    }
-
-    const price = parseFloat(newService.price);
-    if (isNaN(price) || price <= 0) {
-      toast.error('Geçerli bir fiyat girin');
-      return;
-    }
-
-    setProfile(prev => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        services: [...prev.services, { name: newService.name, price }]
-      };
-    });
-
-    setNewService({ name: '', price: '' });
-    toast.success('Hizmet başarıyla eklendi');
-  };
-
-  const handleUpdateService = (index: number) => {
     if (!profile) return;
-
-    const updatedServices = [...profile.services];
-    updatedServices[index] = {
-      name: newService.name,
-      price: parseFloat(newService.price)
-    };
+    
+    if (!newService.name || newService.price <= 0 || newService.duration <= 0) {
+      toast.error('Lütfen tüm alanları doldurun');
+      return;
+    }
 
     setProfile({
       ...profile,
-      services: updatedServices
+      services: [...profile.services, newService]
     });
 
-    setEditingServiceIndex(null);
-    setNewService({ name: '', price: '' });
-    toast.success('Hizmet başarıyla güncellendi');
+    setNewService({
+      name: '',
+      price: 0,
+      duration: 30
+    });
   };
 
-  const handleDeleteService = (index: number) => {
+  const handleRemoveService = (index: number) => {
     if (!profile) return;
-
+    
     const updatedServices = profile.services.filter((_, i) => i !== index);
     setProfile({
       ...profile,
       services: updatedServices
     });
-
-    toast.success('Hizmet başarıyla silindi');
   };
+
+  const handleUpdateWorkingHours = (day: string, field: 'start' | 'end', value: string) => {
+    if (!profile) return;
+
+    setProfile({
+      ...profile,
+      workingHours: {
+        ...profile.workingHours,
+        [day]: {
+          ...profile.workingHours[day],
+          [field]: value
+        }
+      }
+    });
+  };
+
+  const menuItems = [
+    {
+      label: 'Randevular',
+      icon: Calendar,
+      href: '/barber/dashboard/appointments'
+    },
+    {
+      label: 'Ayarlar',
+      icon: Settings,
+      href: '/barber/settings'
+    }
+  ];
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
 
-  if (error) {
+  if (!profile) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-red-600 mb-4">Hata</h2>
-          <p className="text-gray-600">{error}</p>
-          <button
-            onClick={() => router.push('/')}
-            className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
-          >
-            Ana Sayfaya Dön
-          </button>
-        </div>
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <p className="text-muted-foreground">Profil bulunamadı</p>
       </div>
     );
-  }
-
-  if (!user || !profile) {
-    return null;
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="container mx-auto px-4">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-2xl font-bold text-indigo-600">KUAFÖRÜM</h1>
-          
-          {/* Hamburger Menu */}
-          <div className="relative">
+    <div className="min-h-screen bg-background">
+      <div className="container py-8">
+        <div className="mb-6 flex items-center justify-between">
+          <h1 className="text-2xl font-bold">Berber Profili</h1>
+          <div className="flex items-center space-x-4">
             <button
-              onClick={() => setShowMenu(!showMenu)}
-              className="p-2 rounded-lg hover:bg-gray-100"
+              onClick={handleSignOut}
+              className="flex items-center space-x-2 rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90"
             >
-              <Menu className="w-6 h-6 text-gray-600" />
+              <LogOut className="h-4 w-4" />
+              <span>Çıkış Yap</span>
             </button>
             
-            {showMenu && (
-              <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg py-1 z-10">
-                <button
-                  onClick={() => router.push('/barber/appointments')}
-                  className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                >
-                  <Calendar className="w-4 h-4 mr-2" />
-                  Randevular
-                </button>
-                <button
-                  onClick={() => router.push('/barber/notifications')}
-                  className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                >
-                  <Bell className="w-4 h-4 mr-2" />
-                  Bildirimler
-                </button>
-                <button
-                  onClick={() => router.push('/barber/staff')}
-                  className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                >
-                  <User className="w-4 h-4 mr-2" />
-                  Çalışanlar
-                </button>
-                <button
-                  onClick={async () => {
-                    try {
-                      await auth.signOut();
-                      router.push('/login');
-                      toast.success('Başarıyla çıkış yapıldı');
-                    } catch (error) {
-                      console.error('Error signing out:', error);
-                      toast.error('Çıkış yapılırken bir hata oluştu');
-                    }
-                  }}
-                  className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
-                >
-                  <LogOut className="w-4 h-4 mr-2" />
-                  Çıkış Yap
-                </button>
-              </div>
-            )}
+            {/* Hamburger Menu Button */}
+            <button
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              className="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white"
+            >
+              {isMenuOpen ? (
+                <X className="h-6 w-6" />
+              ) : (
+                <Menu className="h-6 w-6" />
+              )}
+            </button>
           </div>
         </div>
 
-        <div className="max-w-4xl mx-auto">
-          {/* Profil Başlığı */}
-          <div className="bg-white rounded-xl shadow-md p-6 mb-6">
-            <div className="flex items-center space-x-4">
-              <div className="relative">
-                {profile.photoURL ? (
-                  <img
-                    src={profile.photoURL}
-                    alt={profile.displayName}
-                    className="w-24 h-24 rounded-full object-cover"
-                  />
-                ) : (
-                  <div className="w-24 h-24 rounded-full bg-indigo-100 flex items-center justify-center">
-                    <User className="w-12 h-12 text-indigo-600" />
-                  </div>
-                )}
-                {isEditing && (
-                  <button className="absolute bottom-0 right-0 bg-white rounded-full p-1 shadow-md">
-                    <Edit2 className="w-4 h-4 text-indigo-600" />
-                  </button>
-                )}
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">{profile.displayName}</h1>
-                <p className="text-gray-600">{profile.email}</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Profil Bilgileri */}
-          <div className="bg-white rounded-xl shadow-md p-6 mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold text-gray-900">Profil Bilgileri</h2>
-              {!isEditing ? (
+        {/* Dropdown Menu */}
+        {isMenuOpen && (
+          <div className="absolute right-4 mt-2 w-48 rounded-md shadow-lg bg-gray-800 ring-1 ring-black ring-opacity-5 z-50">
+            <div className="py-1" role="menu" aria-orientation="vertical">
+              {menuItems.map((item) => (
                 <button
-                  onClick={() => setIsEditing(true)}
-                  className="text-indigo-600 hover:text-indigo-700"
+                  key={item.label}
+                  onClick={() => {
+                    router.push(item.href);
+                    setIsMenuOpen(false);
+                  }}
+                  className="w-full flex items-center px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
+                  role="menuitem"
                 >
-                  <Edit2 className="w-5 h-5" />
+                  <item.icon className="h-4 w-4 mr-2" />
+                  {item.label}
                 </button>
-              ) : (
-                <div className="flex space-x-2">
-                  <button
-                    onClick={() => setIsEditing(false)}
-                    className="text-red-600 hover:text-red-700"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                  <button
-                    onClick={handleUpdateProfile}
-                    className="text-green-600 hover:text-green-700"
-                  >
-                    <Check className="w-5 h-5" />
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Ad Soyad</label>
-                {isEditing ? (
-                  <input
-                    type="text"
-                    value={profile.displayName}
-                    onChange={(e) => setProfile({ ...profile, displayName: e.target.value })}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white text-gray-900 px-3 py-2"
-                    placeholder="Adınızı ve soyadınızı girin"
-                  />
-                ) : (
-                  <p className="mt-1 text-gray-900">{profile.displayName}</p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Telefon</label>
-                {isEditing ? (
-                  <input
-                    type="tel"
-                    value={profile.phone}
-                    onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white text-gray-900 px-3 py-2"
-                    placeholder="Telefon numaranızı girin"
-                  />
-                ) : (
-                  <p className="mt-1 text-gray-900">{profile.phone || 'Belirtilmemiş'}</p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Adres</label>
-                {isEditing ? (
-                  <textarea
-                    value={profile.address || ''}
-                    onChange={(e) => setProfile({ ...profile, address: e.target.value })}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white text-gray-900 px-3 py-2"
-                    rows={3}
-                    placeholder="Adresinizi girin"
-                  />
-                ) : (
-                  <p className="mt-1 text-gray-900">{profile.address || 'Belirtilmemiş'}</p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Kuaför Tipi</label>
-                {isEditing ? (
-                  <select
-                    value={profile.type}
-                    onChange={(e) => setProfile({ ...profile, type: e.target.value as 'male' | 'female' | 'mixed' })}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white text-gray-900 px-3 py-2"
-                  >
-                    <option value="male">Erkek</option>
-                    <option value="female">Kadın</option>
-                    <option value="mixed">Unisex</option>
-                  </select>
-                ) : (
-                  <p className="mt-1 text-gray-900">
-                    {profile.type === 'male' ? 'Erkek' : profile.type === 'female' ? 'Kadın' : 'Unisex'}
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Hizmetler */}
-          <div className="bg-white rounded-xl shadow-md p-6 mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold text-gray-900">Hizmetler</h2>
-              {!isEditingServices ? (
-                <button
-                  onClick={() => setIsEditingServices(true)}
-                  className="text-indigo-600 hover:text-indigo-700"
-                >
-                  <Edit2 className="w-5 h-5" />
-                </button>
-              ) : (
-                <div className="flex space-x-2">
-                  <button
-                    onClick={() => setIsEditingServices(false)}
-                    className="text-red-600 hover:text-red-700"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                  <button
-                    onClick={handleUpdateProfile}
-                    className="text-green-600 hover:text-green-700"
-                  >
-                    <Check className="w-5 h-5" />
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {isEditingServices && (
-              <div className="mb-4 space-y-4">
-                <div className="flex gap-4">
-                  <input
-                    type="text"
-                    value={newService.name}
-                    onChange={(e) => setNewService({ ...newService, name: e.target.value })}
-                    className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white text-gray-900 px-3 py-2"
-                    placeholder="Hizmet adı"
-                  />
-                  <input
-                    type="number"
-                    value={newService.price}
-                    onChange={(e) => setNewService({ ...newService, price: e.target.value })}
-                    className="w-32 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white text-gray-900 px-3 py-2"
-                    placeholder="Fiyat"
-                  />
-                  {editingServiceIndex === null ? (
-                    <button
-                      onClick={handleAddService}
-                      className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
-                    >
-                      Ekle
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => handleUpdateService(editingServiceIndex)}
-                      className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-                    >
-                      Güncelle
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
-
-            <div className="space-y-4">
-              {profile.services.map((service, index) => (
-                <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  {isEditingServices ? (
-                    <>
-                      <div className="flex-1">
-                        <input
-                          type="text"
-                          value={editingServiceIndex === index ? newService.name : service.name}
-                          onChange={(e) => {
-                            if (editingServiceIndex === index) {
-                              setNewService({ ...newService, name: e.target.value });
-                            } else {
-                              setNewService({ name: e.target.value, price: service.price.toString() });
-                              setEditingServiceIndex(index);
-                            }
-                          }}
-                          className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white text-gray-900 px-3 py-2"
-                        />
-                      </div>
-                      <div className="w-32 mx-4">
-                        <input
-                          type="number"
-                          value={editingServiceIndex === index ? newService.price : service.price}
-                          onChange={(e) => {
-                            if (editingServiceIndex === index) {
-                              setNewService({ ...newService, price: e.target.value });
-                            } else {
-                              setNewService({ name: service.name, price: e.target.value });
-                              setEditingServiceIndex(index);
-                            }
-                          }}
-                          className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white text-gray-900 px-3 py-2"
-                        />
-                      </div>
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={() => handleDeleteService(index)}
-                          className="p-2 text-red-600 hover:text-red-700"
-                        >
-                          <X className="w-5 h-5" />
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-gray-900">{service.name}</span>
-                      <span className="text-indigo-600 font-medium">{service.price} TL</span>
-                    </>
-                  )}
-                </div>
               ))}
             </div>
           </div>
+        )}
 
-          {/* Şifre Değiştirme */}
-          <div className="bg-white rounded-xl shadow-md p-6 mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold text-gray-900">Şifre Değiştir</h2>
-              {!isEditingPassword ? (
+        <div className="grid gap-8 md:grid-cols-[300px,1fr]">
+          {/* Sol Sidebar - Profil Bilgileri */}
+          <div className="space-y-6">
+            <div className="rounded-lg border bg-card p-6">
+              <div className="flex flex-col items-center space-y-4">
+                <div className="relative h-32 w-32 overflow-hidden rounded-full">
+                  <Image
+                    src={profile.photoURL}
+                    alt={`${profile.name} profil fotoğrafı`}
+                    fill
+                    sizes="(max-width: 768px) 100vw, 128px"
+                    className="object-cover"
+                    priority
+                  />
+                </div>
+                <div className="text-center">
+                  <h2 className="text-2xl font-semibold">{profile.name}</h2>
+                  <p className="text-sm text-muted-foreground">Kuaför</p>
+                </div>
+              </div>
+              <div className="mt-6 space-y-4">
+                {editingProfile ? (
+                  <form onSubmit={handleUpdateProfile} className="space-y-4">
+                    <div className="space-y-4">
+                      <div>
+                        <label className="text-sm font-medium">Kuaför Adı</label>
+                        <input
+                          type="text"
+                          value={profile.name}
+                          onChange={(e) => handleProfileChange('name', e.target.value)}
+                          className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium">Telefon</label>
+                        <input
+                          type="tel"
+                          value={profile.phone}
+                          onChange={(e) => handleProfileChange('phone', e.target.value)}
+                          className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium">Adres</label>
+                        <textarea
+                          value={profile.address}
+                          onChange={(e) => handleProfileChange('address', e.target.value)}
+                          className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                          rows={3}
+                        />
+                      </div>
+                    </div>
+                    <div className="flex justify-end space-x-2">
+                      <button
+                        type="button"
+                        onClick={() => setEditingProfile(false)}
+                        className="rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground"
+                      >
+                        İptal
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={loading}
+                        className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                      >
+                        {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        Kaydet
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <>
+                    <div className="flex items-center space-x-2">
+                      <MapPin className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm">{profile.address}</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Phone className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm">{profile.phone}</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Mail className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm">{profile.email}</span>
+                    </div>
+                    <button
+                      onClick={() => setEditingProfile(true)}
+                      className="mt-4 w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                    >
+                      Profili Düzenle
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Çalışma Saatleri */}
+            <div className="rounded-lg border bg-card p-6">
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="flex items-center text-lg font-semibold">
+                  <Clock className="mr-2 h-5 w-5" />
+                  Çalışma Saatleri
+                </h3>
                 <button
-                  onClick={() => setIsEditingPassword(true)}
-                  className="text-indigo-600 hover:text-indigo-700"
+                  onClick={() => setEditing(!editing)}
+                  className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
                 >
-                  <Lock className="w-5 h-5" />
+                  {editing ? 'İptal' : 'Düzenle'}
                 </button>
+              </div>
+              <div className="space-y-4">
+                {Object.entries(profile.workingHours).map(([day, hours]) => (
+                  <div key={day} className="flex items-center justify-between">
+                    <span className="font-medium">{day}</span>
+                    <div className="flex items-center space-x-2">
+                      {hours.isClosed ? (
+                        <span className="text-sm text-muted-foreground">Kapalı</span>
+                      ) : (
+                        <>
+                          <input
+                            type="time"
+                            value={hours.start}
+                            onChange={(e) => handleUpdateWorkingHours(day, 'start', e.target.value)}
+                            className="w-24 rounded-md border border-input bg-background px-2 py-1 text-sm"
+                            disabled={!editing}
+                          />
+                          <span>-</span>
+                          <input
+                            type="time"
+                            value={hours.end}
+                            onChange={(e) => handleUpdateWorkingHours(day, 'end', e.target.value)}
+                            className="w-24 rounded-md border border-input bg-background px-2 py-1 text-sm"
+                            disabled={!editing}
+                          />
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {editing && (
+                  <div className="flex justify-end">
+                    <button
+                      onClick={handleUpdateProfile}
+                      disabled={loading}
+                      className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                    >
+                      {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Kaydet
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Sağ Taraf - Hizmetler */}
+          <div className="space-y-8">
+            {/* Hizmetler */}
+            <div className="rounded-lg border bg-card p-6">
+              <div className="mb-6 flex items-center justify-between">
+                <h3 className="flex items-center text-lg font-semibold">
+                  <Scissors className="mr-2 h-5 w-5" />
+                  Hizmetler
+                </h3>
+                <button
+                  onClick={() => setEditing(!editing)}
+                  className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                >
+                  {editing ? 'İptal' : 'Düzenle'}
+                </button>
+              </div>
+
+              {editing ? (
+                <form onSubmit={handleUpdateProfile} className="space-y-4">
+                  <div className="space-y-4">
+                    <div className="grid gap-4 sm:grid-cols-3">
+                      <input
+                        type="text"
+                        placeholder="Hizmet Adı"
+                        value={newService.name}
+                        onChange={(e) => setNewService({ ...newService, name: e.target.value })}
+                        className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      />
+                      <input
+                        type="number"
+                        placeholder="Fiyat"
+                        value={newService.price}
+                        onChange={(e) => setNewService({ ...newService, price: Number(e.target.value) })}
+                        className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      />
+                      <input
+                        type="number"
+                        placeholder="Süre (dk)"
+                        value={newService.duration}
+                        onChange={(e) => setNewService({ ...newService, duration: Number(e.target.value) })}
+                        className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleAddService}
+                      className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                    >
+                      Hizmet Ekle
+                    </button>
+                  </div>
+
+                  <div className="space-y-4">
+                    {profile.services.map((service, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between rounded-lg border bg-background p-4"
+                      >
+                        <div>
+                          <h4 className="font-medium">{service.name}</h4>
+                          <div className="mt-1 flex items-center space-x-4 text-sm text-muted-foreground">
+                            <span>{service.duration} dk</span>
+                            <span>{service.price} ₺</span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveService(index)}
+                          className="rounded-md bg-destructive px-2 py-1 text-sm font-medium text-destructive-foreground hover:bg-destructive/90"
+                        >
+                          Sil
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex justify-end space-x-2">
+                    <button
+                      type="button"
+                      onClick={() => setEditing(false)}
+                      className="rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground"
+                    >
+                      İptal
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                    >
+                      {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Kaydet
+                    </button>
+                  </div>
+                </form>
               ) : (
-                <div className="flex space-x-2">
-                  <button
-                    onClick={() => setIsEditingPassword(false)}
-                    className="text-red-600 hover:text-red-700"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                  <button
-                    onClick={handleUpdatePassword}
-                    className="text-green-600 hover:text-green-700"
-                  >
-                    <Check className="w-5 h-5" />
-                  </button>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {profile.services.map((service, index) => (
+                    <div
+                      key={index}
+                      className="rounded-lg border bg-background p-4"
+                    >
+                      <h4 className="font-medium">{service.name}</h4>
+                      <div className="mt-2 flex items-center justify-between text-sm text-muted-foreground">
+                        <span>{service.duration} dk</span>
+                        <span>{service.price} ₺</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
 
-            {isEditingPassword && (
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Mevcut Şifre</label>
-                  <input
-                    type="password"
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white text-gray-900 px-3 py-2"
-                    placeholder="Mevcut şifrenizi girin"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Yeni Şifre</label>
-                  <input
-                    type="password"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white text-gray-900 px-3 py-2"
-                    placeholder="Yeni şifrenizi girin"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Yeni Şifre (Tekrar)</label>
-                  <input
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white text-gray-900 px-3 py-2"
-                    placeholder="Yeni şifrenizi tekrar girin"
-                  />
-                </div>
+            {/* Randevular */}
+            <div className="rounded-lg border bg-card p-6">
+              <div className="mb-6 flex items-center justify-between">
+                <h3 className="flex items-center text-lg font-semibold">
+                  <Calendar className="mr-2 h-5 w-5" />
+                  Bugünkü Randevular
+                </h3>
+                <button className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+                  Tümünü Gör
+                </button>
               </div>
-            )}
-          </div>
 
-          {/* Bildirim Tercihleri */}
-          <div className="bg-white rounded-xl shadow-md p-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Bildirim Tercihleri</h2>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center">
-                  <Bell className="w-5 h-5 text-gray-500 mr-2" />
-                  <span className="text-gray-700">E-posta Bildirimleri</span>
+              <div className="space-y-4">
+                {/* Örnek randevu kartları */}
+                <div className="rounded-lg border bg-background p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div className="relative h-10 w-10 overflow-hidden rounded-full">
+                        <Image
+                          src="/images/default-avatar.jpg"
+                          alt="Müşteri"
+                          fill
+                          className="object-cover"
+                        />
+                      </div>
+                      <div>
+                        <h4 className="font-medium">Ahmet Yılmaz</h4>
+                        <p className="text-sm text-muted-foreground">
+                          Saç Kesimi
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-medium">14:30</p>
+                      <p className="text-sm text-muted-foreground">30 dk</p>
+                    </div>
+                  </div>
                 </div>
-                <button
-                  onClick={() => handleUpdateNotifications('email')}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full ${
-                    profile.notifications.email ? 'bg-indigo-600' : 'bg-gray-200'
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
-                      profile.notifications.email ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
+
+                <div className="rounded-lg border bg-background p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div className="relative h-10 w-10 overflow-hidden rounded-full">
+                        <Image
+                          src="/images/default-avatar.jpg"
+                          alt="Müşteri"
+                          fill
+                          className="object-cover"
+                        />
+                      </div>
+                      <div>
+                        <h4 className="font-medium">Ayşe Demir</h4>
+                        <p className="text-sm text-muted-foreground">
+                          Saç Boyama
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-medium">16:00</p>
+                      <p className="text-sm text-muted-foreground">60 dk</p>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center">
-                  <Bell className="w-5 h-5 text-gray-500 mr-2" />
-                  <span className="text-gray-700">Push Bildirimleri</span>
+            </div>
+
+            {/* İstatistikler */}
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-lg border bg-card p-6">
+                <div className="flex items-center space-x-2">
+                  <Users className="h-5 w-5 text-primary" />
+                  <h3 className="text-lg font-semibold">Toplam Müşteri</h3>
                 </div>
-                <button
-                  onClick={() => handleUpdateNotifications('push')}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full ${
-                    profile.notifications.push ? 'bg-indigo-600' : 'bg-gray-200'
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
-                      profile.notifications.push ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
+                <p className="mt-2 text-3xl font-bold">128</p>
+                <p className="text-sm text-muted-foreground">
+                  Bu ay +12 yeni müşteri
+                </p>
               </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center">
-                  <Bell className="w-5 h-5 text-gray-500 mr-2" />
-                  <span className="text-gray-700">SMS Bildirimleri</span>
+
+              <div className="rounded-lg border bg-card p-6">
+                <div className="flex items-center space-x-2">
+                  <Calendar className="h-5 w-5 text-primary" />
+                  <h3 className="text-lg font-semibold">Bugünkü Randevu</h3>
                 </div>
-                <button
-                  onClick={() => handleUpdateNotifications('sms')}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full ${
-                    profile.notifications.sms ? 'bg-indigo-600' : 'bg-gray-200'
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
-                      profile.notifications.sms ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
+                <p className="mt-2 text-3xl font-bold">8</p>
+                <p className="text-sm text-muted-foreground">
+                  2 randevu tamamlandı
+                </p>
+              </div>
+
+              <div className="rounded-lg border bg-card p-6">
+                <div className="flex items-center space-x-2">
+                  <Scissors className="h-5 w-5 text-primary" />
+                  <h3 className="text-lg font-semibold">Aylık Hizmet</h3>
+                </div>
+                <p className="mt-2 text-3xl font-bold">156</p>
+                <p className="text-sm text-muted-foreground">
+                  Geçen aya göre +15%
+                </p>
+              </div>
+
+              <div className="rounded-lg border bg-card p-6">
+                <div className="flex items-center space-x-2">
+                  <Clock className="h-5 w-5 text-primary" />
+                  <h3 className="text-lg font-semibold">Ortalama Süre</h3>
+                </div>
+                <p className="mt-2 text-3xl font-bold">45dk</p>
+                <p className="text-sm text-muted-foreground">
+                  Müşteri başına
+                </p>
               </div>
             </div>
           </div>

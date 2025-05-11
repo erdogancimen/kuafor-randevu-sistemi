@@ -2,11 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { doc, getDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, collection, addDoc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
 import { db, auth } from '@/config/firebase';
 import Image from 'next/image';
-import { MapPin, Star, Clock, Scissors, Phone, Mail } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { MapPin, Star, Clock, Scissors, Phone, Mail, Calendar, Loader2, Home, Check, X } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 
 interface Barber {
   id: string;
@@ -23,10 +23,19 @@ interface Barber {
     duration: number;
   }[];
   workingHours?: {
-    day: string;
-    start: string;
-    end: string;
-  }[];
+    [key: string]: {
+      start: string;
+      end: string;
+      isClosed?: boolean;
+    };
+  };
+}
+
+interface Appointment {
+  id: string;
+  date: string;
+  time: string;
+  duration: number;
 }
 
 export default function BarberDetailPage() {
@@ -38,6 +47,8 @@ export default function BarberDetailPage() {
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [selectedTime, setSelectedTime] = useState<string>('');
   const [bookingLoading, setBookingLoading] = useState(false);
+  const [availableSlots, setAvailableSlots] = useState<string[]>([]);
+  const [existingAppointments, setExistingAppointments] = useState<Appointment[]>([]);
 
   useEffect(() => {
     const fetchBarber = async () => {
@@ -48,6 +59,7 @@ export default function BarberDetailPage() {
         }
       } catch (error) {
         console.error('Error fetching barber:', error);
+        toast.error('Kuaför bilgileri yüklenirken bir hata oluştu');
       } finally {
         setLoading(false);
       }
@@ -55,6 +67,80 @@ export default function BarberDetailPage() {
 
     fetchBarber();
   }, [params.id]);
+
+  useEffect(() => {
+    const fetchAppointments = async () => {
+      if (!selectedDate || !barber) return;
+
+      try {
+        const appointmentsQuery = query(
+          collection(db, 'appointments'),
+          where('barberId', '==', barber.id),
+          where('date', '==', selectedDate),
+          where('status', 'in', ['pending', 'confirmed'])
+        );
+
+        const querySnapshot = await getDocs(appointmentsQuery);
+        const appointments = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as Appointment[];
+
+        setExistingAppointments(appointments);
+      } catch (error) {
+        console.error('Error fetching appointments:', error);
+        toast.error('Randevu bilgileri yüklenirken bir hata oluştu');
+      }
+    };
+
+    fetchAppointments();
+  }, [selectedDate, barber]);
+
+  useEffect(() => {
+    if (!selectedDate || !barber || !selectedService) return;
+
+    const selectedServiceData = barber.services?.find(s => s.name === selectedService);
+    if (!selectedServiceData) return;
+
+    const dayOfWeek = new Date(selectedDate).toLocaleDateString('tr-TR', { weekday: 'long' });
+    const workingHours = barber.workingHours?.[dayOfWeek];
+
+    if (!workingHours || workingHours.isClosed) {
+      setAvailableSlots([]);
+      return;
+    }
+
+    const [startHour, startMinute] = workingHours.start.split(':').map(Number);
+    const [endHour, endMinute] = workingHours.end.split(':').map(Number);
+    const startTime = startHour * 60 + startMinute;
+    const endTime = endHour * 60 + endMinute;
+    const duration = selectedServiceData.duration;
+
+    const slots: string[] = [];
+    for (let time = startTime; time + duration <= endTime; time += 30) {
+      const hour = Math.floor(time / 60);
+      const minute = time % 60;
+      const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+
+      // Check if this time slot overlaps with any existing appointment
+      const isAvailable = !existingAppointments.some(appointment => {
+        const [appHour, appMinute] = appointment.time.split(':').map(Number);
+        const appStartTime = appHour * 60 + appMinute;
+        const appEndTime = appStartTime + appointment.duration;
+        const slotEndTime = time + duration;
+
+        return (time >= appStartTime && time < appEndTime) || // Slot starts during an appointment
+               (slotEndTime > appStartTime && slotEndTime <= appEndTime) || // Slot ends during an appointment
+               (time <= appStartTime && slotEndTime >= appEndTime); // Slot completely contains an appointment
+      });
+
+      if (isAvailable) {
+        slots.push(timeString);
+      }
+    }
+
+    setAvailableSlots(slots);
+  }, [selectedDate, selectedService, barber, existingAppointments]);
 
   const handleBooking = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,12 +151,22 @@ export default function BarberDetailPage() {
     }
 
     try {
+      // Kullanıcı tipini kontrol et
+      const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
+      const userData = userDoc.data();
+      
+      if (userData?.role === 'barber') {
+        toast.error('Kuaförler randevu oluşturamaz');
+        return;
+      }
+
       setBookingLoading(true);
       const selectedServiceData = barber?.services?.find(s => s.name === selectedService);
       
       await addDoc(collection(db, 'appointments'), {
         userId: auth.currentUser.uid,
         barberId: barber?.id,
+        barberName: `${barber?.firstName} ${barber?.lastName}`,
         service: selectedService,
         date: selectedDate,
         time: selectedTime,
@@ -93,7 +189,7 @@ export default function BarberDetailPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
@@ -104,76 +200,61 @@ export default function BarberDetailPage() {
         <div className="text-center">
           <h1 className="text-2xl font-bold text-gray-900">Kuaför bulunamadı</h1>
           <p className="text-gray-600 mt-2">Aradığınız kuaför bulunamadı veya artık mevcut değil.</p>
+          <button
+            onClick={() => router.push('/')}
+            className="mt-4 flex items-center space-x-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            <Home className="h-4 w-4" />
+            <span>Anasayfaya Dön</span>
+          </button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white shadow-sm">
-        <div className="container mx-auto px-4 py-8">
-          <div className="flex flex-col md:flex-row gap-8">
-            {/* Barber Image */}
-            <div className="w-full md:w-1/3">
-              <div className="relative h-64 md:h-80 rounded-xl overflow-hidden bg-gray-200">
-                {barber.imageUrl ? (
-                  <Image
-                    src={barber.imageUrl}
-                    alt={`${barber.firstName} ${barber.lastName}`}
-                    fill
-                    className="object-cover"
-                  />
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="text-gray-400 text-4xl">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-16 h-16">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
-                      </svg>
-                    </div>
-                  </div>
-                )}
-              </div>
+    <div className="min-h-screen bg-gray-900">
+      {/* Hero Section */}
+      <div className="relative bg-gray-900">
+        <div className="absolute inset-0">
+          <Image
+            src="/images/default-barber.jpg"
+            alt={`${barber.firstName} ${barber.lastName}`}
+            fill
+            className="object-cover opacity-10"
+            priority
+          />
+        </div>
+        <div className="relative container mx-auto px-4 py-16">
+          <div className="flex flex-col md:flex-row items-center gap-8">
+            <div className="relative h-32 w-32 md:h-40 md:w-40 rounded-full overflow-hidden bg-white/5 border-4 border-white/10">
+              <Image
+                src="/images/default-barber.jpg"
+                alt={`${barber.firstName} ${barber.lastName}`}
+                fill
+                className="object-cover"
+              />
             </div>
-
-            {/* Barber Info */}
-            <div className="w-full md:w-2/3">
-              <h1 className="text-3xl font-bold text-gray-900">
+            <div className="text-center md:text-left">
+              <h1 className="text-3xl md:text-4xl font-bold text-white">
                 {barber.firstName} {barber.lastName}
               </h1>
-              <div className="flex items-center mt-2">
+              <div className="flex items-center justify-center md:justify-start mt-2">
                 <Star className="w-5 h-5 text-yellow-400" />
-                <span className="ml-1 text-lg font-medium">{barber.rating?.toFixed(1) || '0.0'}</span>
+                <span className="ml-1 text-lg font-medium text-white">{barber.rating?.toFixed(1) || '0.0'}</span>
               </div>
-
-              <div className="mt-6 space-y-4">
-                <div className="flex items-center text-gray-600">
+              <div className="mt-4 flex flex-wrap justify-center md:justify-start gap-4">
+                <div className="flex items-center text-white/70">
                   <MapPin className="w-5 h-5 mr-2" />
                   <span>{barber.address}</span>
                 </div>
-                <div className="flex items-center text-gray-600">
+                <div className="flex items-center text-white/70">
                   <Phone className="w-5 h-5 mr-2" />
                   <span>{barber.phone}</span>
                 </div>
-                <div className="flex items-center text-gray-600">
+                <div className="flex items-center text-white/70">
                   <Mail className="w-5 h-5 mr-2" />
                   <span>{barber.email}</span>
-                </div>
-              </div>
-
-              {/* Working Hours */}
-              <div className="mt-8">
-                <h2 className="text-xl font-semibold text-gray-900 mb-4">Çalışma Saatleri</h2>
-                <div className="grid grid-cols-2 gap-4">
-                  {barber.workingHours?.map((hour, index) => (
-                    <div key={index} className="flex items-center justify-between bg-gray-50 p-3 rounded-lg">
-                      <span className="font-medium">{hour.day}</span>
-                      <span className="text-gray-600">
-                        {hour.start} - {hour.end}
-                      </span>
-                    </div>
-                  ))}
                 </div>
               </div>
             </div>
@@ -181,75 +262,122 @@ export default function BarberDetailPage() {
         </div>
       </div>
 
-      {/* Services and Booking */}
+      {/* Main Content */}
       <div className="container mx-auto px-4 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Services */}
-          <div className="lg:col-span-2">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Hizmetler</h2>
-            <div className="space-y-4">
-              {barber.services?.map((service, index) => (
-                <div
-                  key={index}
-                  className={`flex items-center justify-between p-4 rounded-lg cursor-pointer transition ${
-                    selectedService === service.name
-                      ? 'bg-indigo-50 border-2 border-indigo-500'
-                      : 'bg-white border border-gray-200 hover:border-indigo-300'
-                  }`}
-                  onClick={() => setSelectedService(service.name)}
-                >
-                  <div>
-                    <h3 className="font-medium text-gray-900">{service.name}</h3>
-                    <div className="flex items-center text-sm text-gray-500 mt-1">
-                      <Clock className="w-4 h-4 mr-1" />
-                      <span>{service.duration} dakika</span>
+          <div className="lg:col-span-2 space-y-8">
+            <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl shadow-sm p-6 border border-white/10">
+              <h2 className="text-2xl font-bold text-white mb-6">Hizmetler</h2>
+              <div className="space-y-4">
+                {barber.services?.map((service, index) => (
+                  <div
+                    key={index}
+                    className={`flex items-center justify-between p-4 rounded-lg cursor-pointer transition ${
+                      selectedService === service.name
+                        ? 'bg-primary/20 border-2 border-primary'
+                        : 'bg-gray-800/50 border border-white/10 hover:border-primary/50'
+                    }`}
+                    onClick={() => setSelectedService(service.name)}
+                  >
+                    <div>
+                      <h3 className="font-medium text-white">{service.name}</h3>
+                      <div className="flex items-center text-sm text-gray-400 mt-1">
+                        <Clock className="w-4 h-4 mr-1" />
+                        <span>{service.duration} dakika</span>
+                      </div>
+                    </div>
+                    <div className="text-lg font-semibold text-white">
+                      {service.price} TL
                     </div>
                   </div>
-                  <div className="text-lg font-semibold text-gray-900">
-                    {service.price} TL
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl shadow-sm p-6 border border-white/10">
+              <h2 className="text-2xl font-bold text-white mb-6">Çalışma Saatleri</h2>
+              <div className="grid grid-cols-2 gap-4">
+                {barber.workingHours && Object.entries(barber.workingHours).map(([day, hours]) => (
+                  <div key={day} className="flex items-center justify-between bg-gray-800/50 p-3 rounded-lg border border-white/10">
+                    <span className="font-medium text-white">{day}</span>
+                    <span className="text-gray-400">
+                      {hours.isClosed ? 'Kapalı' : `${hours.start} - ${hours.end}`}
+                    </span>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
 
           {/* Booking Form */}
-          <div className="bg-white rounded-xl shadow-sm p-6 h-fit">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Randevu Al</h2>
+          <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl shadow-sm p-6 h-fit border border-white/10">
+            <h2 className="text-2xl font-bold text-white mb-6">Randevu Al</h2>
             <form onSubmit={handleBooking} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-300 mb-1">
                   Tarih
                 </label>
-                <input
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition text-black"
-                  min={new Date().toISOString().split('T')[0]}
-                  required
-                />
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Calendar className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <input
+                    type="date"
+                    value={selectedDate}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    className="w-full pl-10 pr-3 py-2 bg-gray-800/50 border border-white/10 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition text-white"
+                    min={new Date().toISOString().split('T')[0]}
+                    required
+                  />
+                </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Saat
-                </label>
-                <input
-                  type="time"
-                  value={selectedTime}
-                  onChange={(e) => setSelectedTime(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition text-black"
-                  required
-                />
-              </div>
+              {selectedDate && selectedService && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">
+                    Müsait Saatler
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {availableSlots.length > 0 ? (
+                      availableSlots.map((slot) => (
+                        <button
+                          key={slot}
+                          type="button"
+                          onClick={() => setSelectedTime(slot)}
+                          className={`p-2 rounded-lg text-sm font-medium transition ${
+                            selectedTime === slot
+                              ? 'bg-primary text-white'
+                              : 'bg-gray-800/50 text-white border border-white/10 hover:border-primary/50'
+                          }`}
+                        >
+                          {slot}
+                        </button>
+                      ))
+                    ) : (
+                      <div className="col-span-3 text-center py-4 text-gray-400">
+                        {!barber.workingHours?.[new Date(selectedDate).toLocaleDateString('tr-TR', { weekday: 'long' })]?.isClosed
+                          ? 'Bu tarihte müsait saat bulunmamaktadır'
+                          : 'Bu gün kapalıdır'}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               <button
                 type="submit"
                 disabled={!selectedService || !selectedDate || !selectedTime || bookingLoading}
-                className="w-full bg-indigo-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition disabled:opacity-50"
+                className="w-full flex justify-center items-center space-x-2 py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-primary hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {bookingLoading ? 'Randevu oluşturuluyor...' : 'Randevu Oluştur'}
+                {bookingLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Randevu oluşturuluyor...</span>
+                  </>
+                ) : (
+                  <span>Randevu Oluştur</span>
+                )}
               </button>
             </form>
           </div>

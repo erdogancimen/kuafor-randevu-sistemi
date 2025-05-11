@@ -3,11 +3,11 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { auth } from '@/config/firebase';
-import { collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, limit, getDoc, doc } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { signOut } from 'firebase/auth';
 import Image from 'next/image';
-import { MapPin, Star, Clock, LogOut, Search, Map, Filter, Calendar, User } from 'lucide-react';
+import { MapPin, Star, Clock, LogOut, Search, Map, Filter, Calendar, User, ChevronRight } from 'lucide-react';
 
 interface Barber {
   id: string;
@@ -21,6 +21,7 @@ interface Barber {
   workingHours?: string;
   latitude?: number;
   longitude?: number;
+  photoURL?: string;
 }
 
 export default function Home() {
@@ -33,6 +34,7 @@ export default function Home() {
   const [nearbyBarbers, setNearbyBarbers] = useState<Barber[]>([]);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
   const router = useRouter();
 
   const getLocation = () => {
@@ -73,11 +75,17 @@ export default function Home() {
   };
 
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((user) => {
+    const unsubscribe = auth.onAuthStateChanged(async (user) => {
       if (user) {
         setUser(user);
+        // Kullanıcı rolünü al
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        if (userDoc.exists()) {
+          setUserRole(userDoc.data().role);
+        }
       } else {
         setUser(null);
+        setUserRole(null);
       }
     });
 
@@ -90,6 +98,14 @@ export default function Home() {
       router.refresh();
     } catch (error) {
       console.error('Error signing out:', error);
+    }
+  };
+
+  const handleProfileClick = () => {
+    if (userRole === 'barber') {
+      router.push('/barber/profile');
+    } else if (userRole === 'customer') {
+      router.push('/profile');
     }
   };
 
@@ -189,77 +205,155 @@ export default function Home() {
     router.push(`/search?q=${searchQuery}`);
   };
 
+  const HeroSection = () => (
+    <div className="relative overflow-hidden bg-gradient-to-br from-primary/10 via-primary/5 to-background py-20">
+      <div className="container mx-auto px-4">
+        {/* Üst menü */}
+        <div className="mb-8 flex items-center justify-end space-x-4">
+          {user ? (
+            <>
+              <button
+                onClick={handleProfileClick}
+                className="flex items-center space-x-2 rounded-md bg-primary/10 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/20"
+              >
+                <User className="h-4 w-4" />
+                <span>Profilim</span>
+              </button>
+              <button
+                onClick={handleLogout}
+                className="flex items-center space-x-2 rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90"
+              >
+                <LogOut className="h-4 w-4" />
+                <span>Çıkış Yap</span>
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => router.push('/login')}
+              className="flex items-center space-x-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            >
+              <User className="h-4 w-4" />
+              <span>Giriş Yap</span>
+            </button>
+          )}
+        </div>
+
+        <div className="grid gap-8 lg:grid-cols-2 lg:gap-12 items-center">
+          <div className="space-y-6 animate-in">
+            <h1 className="text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
+              En İyi Kuaförleri <br />
+              <span className="text-primary">Keşfedin</span>
+            </h1>
+            <p className="text-lg text-muted-foreground">
+              Size en yakın kuaförleri bulun, değerlendirmeleri inceleyin ve hemen randevu alın.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <form onSubmit={handleSearch} className="flex-1">
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Kuaför ara..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full px-4 py-3 rounded-lg border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                  <button
+                    type="submit"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <Search className="w-5 h-5" />
+                  </button>
+                </div>
+              </form>
+              {!user && (
+                <button
+                  onClick={() => router.push('/register')}
+                  className="px-6 py-3 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                >
+                  Hemen Başla
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="relative h-[400px] lg:h-[500px] animate-in">
+            <Image
+              src="/images/hero-image.jpg"
+              alt="Kuaför Randevu Sistemi"
+              fill
+              sizes="(max-width: 768px) 100vw, 50vw"
+              className="object-cover rounded-2xl"
+              priority
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const SectionHeader = ({ title, description }: { title: string; description?: string }) => (
+    <div className="space-y-2 mb-8">
+      <h2 className="text-3xl font-bold tracking-tight">{title}</h2>
+      {description && <p className="text-muted-foreground">{description}</p>}
+    </div>
+  );
+
   const BarberCard = ({ barber }: { barber: Barber }) => {
-    const [imageError, setImageError] = useState(false);
-    
-    const getDefaultImage = (type: string) => {
-      switch (type?.toLowerCase()) {
-        case 'male':
-          return '/images/default-male-barber.jpeg';
-        case 'female':
-          return '/images/default-female-barber.jpeg';
-        case 'mixed':
-          return '/images/default-unisex-barber.jpeg';
-        default:
-          return '/images/default-male-barber.jpeg';
+    const router = useRouter();
+
+    const getWorkingHours = () => {
+      if (!barber.workingHours) return 'Çalışma saatleri bilgisi yok';
+      
+      try {
+        const hours = typeof barber.workingHours === 'string' 
+          ? JSON.parse(barber.workingHours) 
+          : barber.workingHours;
+
+        const today = new Date().toLocaleDateString('tr-TR', { weekday: 'long' });
+        const todayHours = hours[today];
+
+        if (todayHours?.isClosed) return 'Bugün kapalı';
+        if (!todayHours) return 'Çalışma saatleri bilgisi yok';
+
+        return `${todayHours.start} - ${todayHours.end}`;
+      } catch (error) {
+        return 'Çalışma saatleri bilgisi yok';
       }
     };
 
     return (
-      <div className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition transform hover:-translate-y-1">
-        <div className="relative h-48">
-          <img
-            src={getDefaultImage(barber.type)}
-            alt={`${barber.firstName} ${barber.lastName}`}
-            className="w-full h-full object-cover"
-            onError={(e) => {
-              e.currentTarget.src = '/images/default-male-barber.jpeg';
-            }}
-          />
-          <div className="absolute top-3 right-3 bg-white/90 px-3 py-1.5 rounded-full text-base font-semibold flex items-center gap-1 shadow-md">
-            <Star className="w-5 h-5 text-yellow-400" />
-            <span className="text-gray-800">{(barber.rating || 0).toFixed(1)}</span>
+      <div
+        onClick={() => router.push(`/barber/${barber.id}`)}
+        className="group cursor-pointer rounded-lg border bg-card p-4 transition-colors hover:bg-accent"
+      >
+        <div className="flex items-start space-x-4">
+          <div className="relative h-16 w-16 overflow-hidden rounded-full">
+            <Image
+              src={barber.photoURL || '/images/default-barber.jpg'}
+              alt={`${barber.firstName} ${barber.lastName}`}
+              fill
+              sizes="(max-width: 768px) 64px, 64px"
+              className="object-cover"
+            />
           </div>
-        </div>
-        <div className="p-4">
-          <h3 className="text-lg font-semibold text-gray-900">
-            {barber.firstName} {barber.lastName}
-          </h3>
-          <div className="flex items-center text-sm text-gray-600 mt-1">
-            <MapPin className="w-4 h-4 mr-1" />
-            <span className="truncate">{barber.address}</span>
-          </div>
-          {barber.distance && (
-            <div className="flex items-center text-sm text-gray-500 mt-1">
-              <Map className="w-4 h-4 mr-1" />
-              <span>{barber.distance.toFixed(1)} km uzaklıkta</span>
-            </div>
-          )}
-          {barber.workingHours && (
-            <div className="flex items-center text-sm text-gray-500 mt-1">
-              <Clock className="w-4 h-4 mr-1" />
-              <span>{barber.workingHours}</span>
-            </div>
-          )}
-          <div className="mt-3 space-y-2">
-            {barber.services?.slice(0, 3).map((service, index) => (
-              <div key={index} className="flex justify-between items-center text-sm">
-                <span className="text-gray-700">{service.name}</span>
-                <span className="text-indigo-600 font-medium">{service.price} TL</span>
+          <div className="flex-1 space-y-1">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold">
+                {barber.firstName} {barber.lastName}
+              </h3>
+              <div className="flex items-center space-x-1">
+                <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                <span className="text-sm font-medium">{barber.rating?.toFixed(1) || '0.0'}</span>
               </div>
-            ))}
-            {barber.services && barber.services.length > 3 && (
-              <div className="text-sm text-indigo-600">
-                +{barber.services.length - 3} hizmet daha
-              </div>
-            )}
+            </div>
+            <div className="flex items-center space-x-2 text-sm text-muted-foreground">
+              <MapPin className="h-4 w-4" />
+              <span>{barber.address}</span>
+            </div>
+            <div className="flex items-center space-x-2 text-sm text-muted-foreground">
+              <Clock className="h-4 w-4" />
+              <span>{getWorkingHours()}</span>
+            </div>
           </div>
-          <button
-            onClick={() => router.push(`/barber/${barber.id}`)}
-            className="mt-4 w-full bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700 transition"
-          >
-            Randevu Al
-          </button>
         </div>
       </div>
     );
@@ -274,115 +368,17 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-8">
-              <h1 className="text-2xl font-bold text-indigo-600">KUAFÖRÜM</h1>
-              <form onSubmit={handleSearch} className="max-w-2xl flex-1">
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="Kuaför ara..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full px-4 py-3 pl-10 pr-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition text-black placeholder-gray-500"
-                  />
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-                </div>
-              </form>
-            </div>
-
-            {/* Auth Buttons or User Info */}
-            {user ? (
-              <div className="flex items-center space-x-4">
-                <div className="flex items-center space-x-2">
-                  <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center">
-                    <span className="text-indigo-600 font-medium">
-                      {user.displayName?.charAt(0) || user.email?.charAt(0)}
-                    </span>
-                  </div>
-                  <span className="text-sm font-medium text-gray-700">
-                    {user.displayName || user.email}
-                  </span>
-                </div>
-                <button
-                  onClick={() => router.push('/profile')}
-                  className="flex items-center space-x-1 px-3 py-2 text-sm font-medium text-indigo-600 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition"
-                >
-                  <User className="w-4 h-4" />
-                  <span>Profil</span>
-                </button>
-                <button
-                  onClick={handleLogout}
-                  className="flex items-center space-x-1 px-3 py-2 text-sm font-medium text-gray-700 hover:text-indigo-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition"
-                >
-                  <LogOut className="w-4 h-4" />
-                  <span>Çıkış Yap</span>
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center space-x-4">
-                <button
-                  onClick={() => router.push('/login')}
-                  className="px-4 py-2 text-sm font-medium text-indigo-600 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition"
-                >
-                  Giriş Yap
-                </button>
-                <button
-                  onClick={() => router.push('/register')}
-                  className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition"
-                >
-                  Kayıt Ol
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      </header>
-
-      {/* Hero Section */}
-      {!user && (
-        <div className="bg-indigo-600 text-white py-16">
-          <div className="container mx-auto px-4">
-            <div className="max-w-3xl mx-auto text-center">
-              <h1 className="text-4xl font-bold mb-4">En İyi Kuaförlerle Tanışın</h1>
-              <p className="text-xl mb-8">
-                Size en yakın ve en iyi kuaförleri keşfedin, kolayca randevu alın.
-              </p>
-              <div className="flex justify-center space-x-4">
-                <button
-                  onClick={() => router.push('/login')}
-                  className="bg-white text-indigo-600 px-6 py-3 rounded-lg font-semibold hover:bg-indigo-50 transition-colors"
-                >
-                  Giriş Yap
-                </button>
-                <button
-                  onClick={() => router.push('/register')}
-                  className="bg-indigo-700 text-white px-6 py-3 rounded-lg font-semibold hover:bg-indigo-800 transition-colors"
-                >
-                  Kayıt Ol
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
+    <div className="min-h-screen">
+      <HeroSection />
+      
+      <div className="container mx-auto px-4 py-12 space-y-16">
         {/* Popüler Kuaförler */}
-        <section className="mb-12">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-gray-900">Popüler Kuaförler</h2>
-            <button className="flex items-center text-indigo-600 hover:text-indigo-700">
-              <Filter className="w-4 h-4 mr-2" />
-              Filtrele
-            </button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <section className="animate-in">
+          <SectionHeader
+            title="Popüler Kuaförler"
+            description="En çok tercih edilen kuaförlerimizi keşfedin"
+          />
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {popularBarbers.map((barber) => (
               <BarberCard key={barber.id} barber={barber} />
             ))}
@@ -390,9 +386,12 @@ export default function Home() {
         </section>
 
         {/* Son Ziyaret Edilenler */}
-        <section className="mb-12">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">Son Ziyaret Ettikleriniz</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <section className="animate-in">
+          <SectionHeader
+            title="Son Ziyaret Edilenler"
+            description="Daha önce baktığınız kuaförler"
+          />
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {recentBarbers.map((barber) => (
               <BarberCard key={barber.id} barber={barber} />
             ))}
@@ -400,78 +399,36 @@ export default function Home() {
         </section>
 
         {/* Yakındaki Kuaförler */}
-        <section id="nearby-barbers">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-gray-900">Yakındaki Kuaförler</h2>
-            {location ? (
-              <button
-                onClick={() => router.push('/map')}
-                className="flex items-center text-indigo-600 hover:text-indigo-700"
-              >
-                <Map className="w-4 h-4 mr-2" />
-                Haritada Göster
-              </button>
-            ) : (
+        <section id="nearby-barbers" className="animate-in">
+          <SectionHeader
+            title="Yakındaki Kuaförler"
+            description="Size en yakın kuaförleri keşfedin"
+          />
+          {showLocationRequest && !location && !locationError && (
+            <div className="mb-8 p-4 rounded-lg bg-primary/10 text-primary">
+              <p className="text-sm">
+                Yakındaki kuaförleri görmek için konum izni vermeniz gerekiyor.
+              </p>
               <button
                 onClick={requestLocationPermission}
-                className="flex items-center text-indigo-600 hover:text-indigo-700"
+                className="mt-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
               >
-                <Map className="w-4 h-4 mr-2" />
-                Konumumu Göster
+                Konum İzni Ver
               </button>
-            )}
-          </div>
-          {showLocationRequest && !locationError && (
-            <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 mb-6">
-              <div className="flex items-start">
-                <div className="flex-shrink-0">
-                  <Map className="w-6 h-6 text-indigo-600" />
-                </div>
-                <div className="ml-3">
-                  <h3 className="text-sm font-medium text-indigo-800">Konum İzni</h3>
-                  <p className="text-sm text-indigo-700 mt-1">
-                    Yakındaki kuaförleri görebilmek için konum izni vermeniz gerekiyor.
-                  </p>
-                  <div className="mt-4">
-                    <button
-                      onClick={requestLocationPermission}
-                      className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-indigo-700 bg-indigo-100 hover:bg-indigo-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                    >
-                      Konum İzni Ver
-                    </button>
-                  </div>
-                </div>
-              </div>
             </div>
           )}
           {locationError && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-              <div className="flex items-start">
-                <div className="flex-shrink-0">
-                  <Map className="w-6 h-6 text-red-600" />
-                </div>
-                <div className="ml-3">
-                  <h3 className="text-sm font-medium text-red-800">Konum Hatası</h3>
-                  <p className="text-sm text-red-700 mt-1">{locationError}</p>
-                  <div className="mt-4">
-                    <button
-                      onClick={requestLocationPermission}
-                      className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-red-700 bg-red-100 hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-                    >
-                      Tekrar Dene
-                    </button>
-                  </div>
-                </div>
-              </div>
+            <div className="mb-8 p-4 rounded-lg bg-destructive/10 text-destructive">
+              <p className="text-sm">{locationError}</p>
             </div>
           )}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {nearbyBarbers.map((barber) => (
               <BarberCard key={barber.id} barber={barber} />
             ))}
           </div>
         </section>
-      </main>
+      </div>
     </div>
   );
 }

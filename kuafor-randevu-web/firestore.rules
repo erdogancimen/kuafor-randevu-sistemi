@@ -1,0 +1,49 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Kullanıcı kimlik doğrulaması kontrolü
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Kullanıcının kendi verilerine erişim kontrolü
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Kullanıcılar koleksiyonu
+    match /users/{userId} {
+      // Kuaför listesi için herkes okuyabilir
+      allow read: if true;
+      // Sadece kendi verilerini yazabilir
+      allow write: if isOwner(userId);
+    }
+
+    // Randevular koleksiyonu
+    match /appointments/{appointmentId} {
+      allow read: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.barberId == request.auth.uid
+      );
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.barberId == request.auth.uid
+      );
+    }
+
+    // Değerlendirmeler koleksiyonu
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+
+    // Favoriler koleksiyonu
+    match /favorites/{favoriteId} {
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+  }
+} 

@@ -3,11 +3,15 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { auth, db } from '@/config/firebase';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
 import { updateProfile, onAuthStateChanged } from 'firebase/auth';
 import { User, Calendar, Bell, Lock, Edit2, X, Check, Menu, LogOut, Loader2, MapPin, Phone, Mail, Clock, Home } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import Image from 'next/image';
+import { Appointment } from '@/types/appointment';
+import { format } from 'date-fns';
+import { tr } from 'date-fns/locale';
+import FavoriteBarbers from '@/components/FavoriteBarbers';
 
 interface CustomerProfile {
   name: string;
@@ -21,6 +25,7 @@ export default function CustomerProfile() {
   const [profile, setProfile] = useState<CustomerProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
+  const [recentAppointments, setRecentAppointments] = useState<Appointment[]>([]);
   const router = useRouter();
 
   useEffect(() => {
@@ -44,6 +49,23 @@ export default function CustomerProfile() {
             photoURL: userData.photoURL || user.photoURL || '/images/default-avatar.jpg'
           };
           setProfile(defaultProfile);
+
+          // Fetch recent appointments
+          const appointmentsRef = collection(db, 'appointments');
+          const q = query(
+            appointmentsRef,
+            where('userId', '==', user.uid),
+            orderBy('createdAt', 'desc'),
+            limit(3)
+          );
+
+          const querySnapshot = await getDocs(q);
+          const appointmentsData = querySnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          })) as Appointment[];
+
+          setRecentAppointments(appointmentsData);
         } else {
           router.push('/');
         }
@@ -102,6 +124,36 @@ export default function CustomerProfile() {
     });
   };
 
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'pending':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'approved':
+        return 'bg-blue-100 text-blue-800';
+      case 'completed':
+        return 'bg-green-100 text-green-800';
+      case 'cancelled':
+        return 'bg-red-100 text-red-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case 'pending':
+        return 'Beklemede';
+      case 'approved':
+        return 'Onaylandı';
+      case 'completed':
+        return 'Tamamlandı';
+      case 'cancelled':
+        return 'İptal Edildi';
+      default:
+        return status;
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -151,7 +203,7 @@ export default function CustomerProfile() {
                     src={profile.photoURL}
                     alt={`${profile.name} profil fotoğrafı`}
                     fill
-                    sizes="(max-width: 768px) 100vw, 128px"
+                    sizes="(max-width: 768px) 128px, 128px"
                     className="object-cover"
                     priority
                   />
@@ -241,44 +293,38 @@ export default function CustomerProfile() {
           <div className="space-y-8">
             {/* Randevular */}
             <div className="rounded-lg border bg-card p-6">
-              <div className="mb-6 flex items-center justify-between">
-                <h3 className="flex items-center text-lg font-semibold">
-                  <Calendar className="mr-2 h-5 w-5" />
-                  Randevularım
-                </h3>
-                <button className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-lg font-semibold">Son Randevularım</h3>
+                <button
+                  onClick={() => router.push('/appointments/history')}
+                  className="text-sm text-primary hover:underline"
+                >
                   Tümünü Gör
                 </button>
               </div>
-
-              <div className="space-y-4">
-                {/* Örnek randevu kartları */}
-                <div className="rounded-lg border bg-background p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div className="relative h-10 w-10 overflow-hidden rounded-full">
-                        <Image
-                          src="/images/default-barber.jpg"
-                          alt="Kuaför"
-                          fill
-                          sizes="(max-width: 768px) 40px, 40px"
-                          className="object-cover"
-                        />
-                      </div>
-                      <div>
-                        <h4 className="font-medium">Ahmet Kuaför</h4>
+              {recentAppointments.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Henüz randevunuz bulunmuyor.</p>
+              ) : (
+                <div className="space-y-4">
+                  {recentAppointments.map((appointment) => (
+                    <div
+                      key={appointment.id}
+                      className="flex items-center justify-between rounded-lg border p-4"
+                    >
+                      <div className="space-y-1">
+                        <p className="font-medium">{appointment.barberName}</p>
                         <p className="text-sm text-muted-foreground">
-                          Saç Kesimi
+                          {format(new Date(appointment.date), 'dd MMMM yyyy', { locale: tr })} - {appointment.time}
                         </p>
+                        <p className="text-sm text-muted-foreground">{appointment.serviceName}</p>
                       </div>
+                      <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(appointment.status)}`}>
+                        {getStatusText(appointment.status)}
+                      </span>
                     </div>
-                    <div className="text-right">
-                      <p className="font-medium">14:30</p>
-                      <p className="text-sm text-muted-foreground">30 dk</p>
-                    </div>
-                  </div>
+                  ))}
                 </div>
-              </div>
+              )}
             </div>
 
             {/* İstatistikler */}
@@ -304,6 +350,12 @@ export default function CustomerProfile() {
                   Saç Kesimi
                 </p>
               </div>
+            </div>
+
+            {/* Favori Kuaförler */}
+            <div className="rounded-lg border bg-card p-6">
+              <h3 className="text-lg font-semibold mb-4">Favori Kuaförlerim</h3>
+              <FavoriteBarbers />
             </div>
           </div>
         </div>

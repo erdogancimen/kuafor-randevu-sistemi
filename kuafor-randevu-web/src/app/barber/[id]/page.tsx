@@ -7,6 +7,8 @@ import { db, auth } from '@/config/firebase';
 import Image from 'next/image';
 import { MapPin, Star, Clock, Scissors, Phone, Mail, Calendar, Loader2, Home, Check, X } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import ReviewList from '@/components/ReviewList';
+import FavoriteButton from '@/components/FavoriteButton';
 
 interface Barber {
   id: string;
@@ -24,8 +26,8 @@ interface Barber {
   }[];
   workingHours?: {
     [key: string]: {
-      start: string;
-      end: string;
+    start: string;
+    end: string;
       isClosed?: boolean;
     };
   };
@@ -99,13 +101,27 @@ export default function BarberDetailPage() {
   useEffect(() => {
     if (!selectedDate || !barber || !selectedService) return;
 
+    console.log('Selected Date:', selectedDate);
+    console.log('Selected Service:', selectedService);
+    console.log('Barber:', barber);
+    console.log('Working Hours:', barber.workingHours);
+
     const selectedServiceData = barber.services?.find(s => s.name === selectedService);
-    if (!selectedServiceData) return;
+    console.log('Selected Service Data:', selectedServiceData);
+
+    if (!selectedServiceData || !selectedServiceData.duration) {
+      console.log('No service data or duration');
+      return;
+    }
 
     const dayOfWeek = new Date(selectedDate).toLocaleDateString('tr-TR', { weekday: 'long' });
+    console.log('Day of Week:', dayOfWeek);
+    
     const workingHours = barber.workingHours?.[dayOfWeek];
+    console.log('Working Hours for Day:', workingHours);
 
     if (!workingHours || workingHours.isClosed) {
+      console.log('No working hours or closed');
       setAvailableSlots([]);
       return;
     }
@@ -115,6 +131,10 @@ export default function BarberDetailPage() {
     const startTime = startHour * 60 + startMinute;
     const endTime = endHour * 60 + endMinute;
     const duration = selectedServiceData.duration;
+
+    console.log('Start Time:', startTime);
+    console.log('End Time:', endTime);
+    console.log('Duration:', duration);
 
     const slots: string[] = [];
     for (let time = startTime; time + duration <= endTime; time += 30) {
@@ -139,6 +159,7 @@ export default function BarberDetailPage() {
       }
     }
 
+    console.log('Available Slots:', slots);
     setAvailableSlots(slots);
   }, [selectedDate, selectedService, barber, existingAppointments]);
 
@@ -212,6 +233,17 @@ export default function BarberDetailPage() {
     );
   }
 
+  // Varsayılan çalışma saatleri
+  const defaultWorkingHours = {
+    'Pazartesi': { start: '09:00', end: '18:00', isClosed: false },
+    'Salı': { start: '09:00', end: '18:00', isClosed: false },
+    'Çarşamba': { start: '09:00', end: '18:00', isClosed: false },
+    'Perşembe': { start: '09:00', end: '18:00', isClosed: false },
+    'Cuma': { start: '09:00', end: '18:00', isClosed: false },
+    'Cumartesi': { start: '10:00', end: '16:00', isClosed: false },
+    'Pazar': { start: '00:00', end: '00:00', isClosed: true }
+  };
+
   return (
     <div className="min-h-screen bg-gray-900">
       {/* Hero Section */}
@@ -221,6 +253,7 @@ export default function BarberDetailPage() {
             src="/images/default-barber.jpg"
             alt={`${barber.firstName} ${barber.lastName}`}
             fill
+            sizes="100vw"
             className="object-cover opacity-10"
             priority
           />
@@ -232,13 +265,21 @@ export default function BarberDetailPage() {
                 src="/images/default-barber.jpg"
                 alt={`${barber.firstName} ${barber.lastName}`}
                 fill
+                sizes="(max-width: 768px) 128px, 160px"
                 className="object-cover"
               />
             </div>
             <div className="text-center md:text-left">
-              <h1 className="text-3xl md:text-4xl font-bold text-white">
-                {barber.firstName} {barber.lastName}
-              </h1>
+              <div className="flex items-center justify-center md:justify-start gap-2">
+                <h1 className="text-3xl md:text-4xl font-bold text-white">
+                  {barber.firstName} {barber.lastName}
+                </h1>
+                <FavoriteButton
+                  barberId={barber.id}
+                  barberName={`${barber.firstName} ${barber.lastName}`}
+                  barberImage={barber.imageUrl}
+                />
+              </div>
               <div className="flex items-center justify-center md:justify-start mt-2">
                 <Star className="w-5 h-5 text-yellow-400" />
                 <span className="ml-1 text-lg font-medium text-white">{barber.rating?.toFixed(1) || '0.0'}</span>
@@ -278,7 +319,10 @@ export default function BarberDetailPage() {
                         ? 'bg-primary/20 border-2 border-primary'
                         : 'bg-gray-800/50 border border-white/10 hover:border-primary/50'
                     }`}
-                    onClick={() => setSelectedService(service.name)}
+                    onClick={() => {
+                      console.log('Selected Service:', service);
+                      setSelectedService(service.name);
+                    }}
                   >
                     <div>
                       <h3 className="font-medium text-white">{service.name}</h3>
@@ -295,17 +339,21 @@ export default function BarberDetailPage() {
               </div>
             </div>
 
+            {/* Çalışma Saatleri */}
             <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl shadow-sm p-6 border border-white/10">
               <h2 className="text-2xl font-bold text-white mb-6">Çalışma Saatleri</h2>
-              <div className="grid grid-cols-2 gap-4">
-                {barber.workingHours && Object.entries(barber.workingHours).map(([day, hours]) => (
-                  <div key={day} className="flex items-center justify-between bg-gray-800/50 p-3 rounded-lg border border-white/10">
-                    <span className="font-medium text-white">{day}</span>
-                    <span className="text-gray-400">
-                      {hours.isClosed ? 'Kapalı' : `${hours.start} - ${hours.end}`}
-                    </span>
-                  </div>
-                ))}
+              <div className="space-y-4">
+                {Object.entries(defaultWorkingHours).map(([day, defaultHours]) => {
+                  const hours = barber?.workingHours?.[day] || defaultHours;
+                  return (
+                    <div key={day} className="flex items-center justify-between bg-gray-800/50 p-3 rounded-lg border border-white/10">
+                      <span className="font-medium text-white">{day}</span>
+                      <span className="text-gray-400">
+                        {hours.isClosed ? 'Kapalı' : `${hours.start} - ${hours.end}`}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -322,15 +370,15 @@ export default function BarberDetailPage() {
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <Calendar className="h-5 w-5 text-gray-400" />
                   </div>
-                  <input
-                    type="date"
-                    value={selectedDate}
-                    onChange={(e) => setSelectedDate(e.target.value)}
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
                     className="w-full pl-10 pr-3 py-2 bg-gray-800/50 border border-white/10 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition text-white"
-                    min={new Date().toISOString().split('T')[0]}
-                    required
-                  />
-                </div>
+                  min={new Date().toISOString().split('T')[0]}
+                  required
+                />
+              </div>
               </div>
 
               {selectedDate && selectedService && (
@@ -381,6 +429,12 @@ export default function BarberDetailPage() {
               </button>
             </form>
           </div>
+        </div>
+
+        {/* Değerlendirmeler */}
+        <div className="mt-8">
+          <h2 className="text-xl font-semibold mb-4">Değerlendirmeler</h2>
+          <ReviewList barberId={barber.id} />
         </div>
       </div>
     </div>

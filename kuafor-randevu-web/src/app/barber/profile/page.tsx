@@ -34,7 +34,8 @@ interface Service {
 export default function BarberProfile() {
   const [profile, setProfile] = useState<BarberProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState(false);
+  const [editingServices, setEditingServices] = useState(false);
+  const [editingWorkingHours, setEditingWorkingHours] = useState(false);
   const [editingProfile, setEditingProfile] = useState(false);
   const [newService, setNewService] = useState<Service>({
     name: '',
@@ -45,17 +46,28 @@ export default function BarberProfile() {
   const router = useRouter();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
+  // Varsayılan çalışma saatleri
+  const defaultWorkingHours = {
+    'Pazartesi': { start: '09:00', end: '18:00', isClosed: false },
+    'Salı': { start: '09:00', end: '18:00', isClosed: false },
+    'Çarşamba': { start: '09:00', end: '18:00', isClosed: false },
+    'Perşembe': { start: '09:00', end: '18:00', isClosed: false },
+    'Cuma': { start: '09:00', end: '18:00', isClosed: false },
+    'Cumartesi': { start: '10:00', end: '16:00', isClosed: false },
+    'Pazar': { start: '00:00', end: '00:00', isClosed: true }
+  };
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (!user) {
-        router.push('/login');
-        return;
-      }
+          router.push('/login');
+          return;
+        }
 
       try {
         const docRef = doc(db, 'users', user.uid);
         const docSnap = await getDoc(docRef);
-
+        
         if (docSnap.exists() && docSnap.data().role === 'barber') {
           const userData = docSnap.data();
           // Varsayılan değerleri ayarla
@@ -118,7 +130,8 @@ export default function BarberProfile() {
       });
 
       toast.success('Profil başarıyla güncellendi');
-      setEditing(false);
+      setEditingServices(false);
+      setEditingWorkingHours(false);
       setEditingProfile(false);
     } catch (error) {
       console.error('Error updating profile:', error);
@@ -130,15 +143,15 @@ export default function BarberProfile() {
 
   const handleProfileChange = (field: keyof BarberProfile, value: string) => {
     if (!profile) return;
-    setProfile({
-      ...profile,
+      setProfile({
+        ...profile,
       [field]: value
-    });
+      });
   };
 
   const handleAddService = () => {
     if (!profile) return;
-    
+
     if (!newService.name || newService.price <= 0 || newService.duration <= 0) {
       toast.error('Lütfen tüm alanları doldurun');
       return;
@@ -158,7 +171,7 @@ export default function BarberProfile() {
 
   const handleRemoveService = (index: number) => {
     if (!profile) return;
-    
+
     const updatedServices = profile.services.filter((_, i) => i !== index);
     setProfile({
       ...profile,
@@ -166,7 +179,7 @@ export default function BarberProfile() {
     });
   };
 
-  const handleUpdateWorkingHours = (day: string, field: 'start' | 'end', value: string) => {
+  const handleUpdateWorkingHours = (day: string, field: 'start' | 'end' | 'isClosed', value: any) => {
     if (!profile) return;
 
     setProfile({
@@ -175,7 +188,7 @@ export default function BarberProfile() {
         ...profile.workingHours,
         [day]: {
           ...profile.workingHours[day],
-          [field]: value
+          ...(typeof value === 'object' ? value : { [field]: value })
         }
       }
     });
@@ -225,16 +238,16 @@ export default function BarberProfile() {
             </button>
             
             {/* Hamburger Menu Button */}
-            <button
+                <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
               className="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white"
-            >
+                >
               {isMenuOpen ? (
                 <X className="h-6 w-6" />
               ) : (
                 <Menu className="h-6 w-6" />
               )}
-            </button>
+                </button>
           </div>
         </div>
 
@@ -256,7 +269,7 @@ export default function BarberProfile() {
                   {item.label}
                 </button>
               ))}
-            </div>
+              </div>
           </div>
         )}
 
@@ -288,7 +301,7 @@ export default function BarberProfile() {
                         <label className="text-sm font-medium">Kuaför Adı</label>
                         <input
                           type="text"
-                          value={profile.name}
+                          value={profile?.name || ''}
                           onChange={(e) => handleProfileChange('name', e.target.value)}
                           className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                         />
@@ -297,7 +310,7 @@ export default function BarberProfile() {
                         <label className="text-sm font-medium">Telefon</label>
                         <input
                           type="tel"
-                          value={profile.phone}
+                          value={profile?.phone || ''}
                           onChange={(e) => handleProfileChange('phone', e.target.value)}
                           className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                         />
@@ -305,7 +318,7 @@ export default function BarberProfile() {
                       <div>
                         <label className="text-sm font-medium">Adres</label>
                         <textarea
-                          value={profile.address}
+                          value={profile?.address || ''}
                           onChange={(e) => handleProfileChange('address', e.target.value)}
                           className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                           rows={3}
@@ -343,17 +356,17 @@ export default function BarberProfile() {
                     <div className="flex items-center space-x-2">
                       <Mail className="h-4 w-4 text-muted-foreground" />
                       <span className="text-sm">{profile.email}</span>
-                    </div>
+                  </div>
                     <button
                       onClick={() => setEditingProfile(true)}
                       className="mt-4 w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
                     >
                       Profili Düzenle
-                    </button>
+                  </button>
                   </>
                 )}
-              </div>
             </div>
+          </div>
 
             {/* Çalışma Saatleri */}
             <div className="rounded-lg border bg-card p-6">
@@ -363,42 +376,65 @@ export default function BarberProfile() {
                   Çalışma Saatleri
                 </h3>
                 <button
-                  onClick={() => setEditing(!editing)}
+                  onClick={() => setEditingWorkingHours(!editingWorkingHours)}
                   className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
                 >
-                  {editing ? 'İptal' : 'Düzenle'}
+                  {editingWorkingHours ? 'İptal' : 'Düzenle'}
                 </button>
               </div>
               <div className="space-y-4">
-                {Object.entries(profile.workingHours).map(([day, hours]) => (
-                  <div key={day} className="flex items-center justify-between">
-                    <span className="font-medium">{day}</span>
-                    <div className="flex items-center space-x-2">
-                      {hours.isClosed ? (
-                        <span className="text-sm text-muted-foreground">Kapalı</span>
-                      ) : (
-                        <>
-                          <input
-                            type="time"
-                            value={hours.start}
-                            onChange={(e) => handleUpdateWorkingHours(day, 'start', e.target.value)}
-                            className="w-24 rounded-md border border-input bg-background px-2 py-1 text-sm"
-                            disabled={!editing}
-                          />
-                          <span>-</span>
-                          <input
-                            type="time"
-                            value={hours.end}
-                            onChange={(e) => handleUpdateWorkingHours(day, 'end', e.target.value)}
-                            className="w-24 rounded-md border border-input bg-background px-2 py-1 text-sm"
-                            disabled={!editing}
-                          />
-                        </>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                {editing && (
+                {Object.entries(defaultWorkingHours).map(([day, defaultHours]) => {
+                  const hours = profile?.workingHours?.[day] || defaultHours;
+                  return (
+                    <div key={day} className="flex items-center justify-between">
+                      <span className="font-medium">{day}</span>
+                      <div className="flex items-center space-x-2">
+                        {hours.isClosed ? (
+                          <span className="text-sm text-muted-foreground">Kapalı</span>
+                        ) : (
+                          <>
+                            <input
+                              type="time"
+                              value={hours.start || ''}
+                              onChange={(e) => handleUpdateWorkingHours(day, 'start', e.target.value)}
+                              className="w-24 rounded-md border border-input bg-background px-2 py-1 text-sm"
+                              disabled={!editingWorkingHours}
+                            />
+                            <span>-</span>
+                  <input
+                              type="time"
+                              value={hours.end || ''}
+                              onChange={(e) => handleUpdateWorkingHours(day, 'end', e.target.value)}
+                              className="w-24 rounded-md border border-input bg-background px-2 py-1 text-sm"
+                              disabled={!editingWorkingHours}
+                            />
+                          </>
+                        )}
+                        {editingWorkingHours && (
+                          <button
+                            onClick={() => {
+                              const updatedHours = { ...hours };
+                              if (hours.isClosed) {
+                                updatedHours.isClosed = false;
+                                updatedHours.start = '09:00';
+                                updatedHours.end = '18:00';
+                              } else {
+                                updatedHours.isClosed = true;
+                                updatedHours.start = '00:00';
+                                updatedHours.end = '00:00';
+                              }
+                              handleUpdateWorkingHours(day, 'isClosed', updatedHours);
+                            }}
+                            className="ml-2 rounded-md bg-secondary px-2 py-1 text-xs font-medium text-secondary-foreground hover:bg-secondary/90"
+                          >
+                            {hours.isClosed ? 'Aç' : 'Kapat'}
+                          </button>
+                )}
+              </div>
+              </div>
+                  );
+                })}
+                {editingWorkingHours && (
                   <div className="flex justify-end">
                     <button
                       onClick={handleUpdateProfile}
@@ -416,7 +452,7 @@ export default function BarberProfile() {
 
           {/* Sağ Taraf - Hizmetler */}
           <div className="space-y-8">
-            {/* Hizmetler */}
+          {/* Hizmetler */}
             <div className="rounded-lg border bg-card p-6">
               <div className="mb-6 flex items-center justify-between">
                 <h3 className="flex items-center text-lg font-semibold">
@@ -424,88 +460,184 @@ export default function BarberProfile() {
                   Hizmetler
                 </h3>
                 <button
-                  onClick={() => setEditing(!editing)}
+                  onClick={() => setEditingServices(!editingServices)}
                   className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
                 >
-                  {editing ? 'İptal' : 'Düzenle'}
+                  {editingServices ? 'Düzenlemeyi Bitir' : 'Hizmetleri Düzenle'}
                 </button>
               </div>
 
-              {editing ? (
-                <form onSubmit={handleUpdateProfile} className="space-y-4">
-                  <div className="space-y-4">
-                    <div className="grid gap-4 sm:grid-cols-3">
-                      <input
-                        type="text"
-                        placeholder="Hizmet Adı"
-                        value={newService.name}
-                        onChange={(e) => setNewService({ ...newService, name: e.target.value })}
-                        className="rounded-md border border-input bg-background px-3 py-2 text-sm"
-                      />
-                      <input
-                        type="number"
-                        placeholder="Fiyat"
-                        value={newService.price}
-                        onChange={(e) => setNewService({ ...newService, price: Number(e.target.value) })}
-                        className="rounded-md border border-input bg-background px-3 py-2 text-sm"
-                      />
-                      <input
-                        type="number"
-                        placeholder="Süre (dk)"
-                        value={newService.duration}
-                        onChange={(e) => setNewService({ ...newService, duration: Number(e.target.value) })}
-                        className="rounded-md border border-input bg-background px-3 py-2 text-sm"
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleAddService}
-                      className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-                    >
-                      Hizmet Ekle
-                    </button>
-                  </div>
-
+              {editingServices ? (
+                <form onSubmit={handleUpdateProfile} className="space-y-6">
                   <div className="space-y-4">
                     {profile.services.map((service, index) => (
                       <div
                         key={index}
-                        className="flex items-center justify-between rounded-lg border bg-background p-4"
+                        className="bg-background p-4 rounded-lg border border-input"
                       >
+                        <div className="space-y-4">
+                          <div>
+                            <label className="block text-sm font-medium mb-1">
+                              Hizmet Adı
+                            </label>
+                            <input
+                              type="text"
+                              value={service.name}
+                              onChange={(e) => {
+                                const updatedServices = [...profile.services];
+                                updatedServices[index] = { ...service, name: e.target.value };
+                                setProfile({ ...profile, services: updatedServices });
+                              }}
+                              className="w-full px-4 py-2 bg-background border border-input rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition"
+                              placeholder="Örn: Saç Kesimi"
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium mb-1">
+                                Süre (Dakika)
+                              </label>
+                              <div className="relative">
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                  <Clock className="h-5 w-5 text-muted-foreground" />
+                                </div>
+                                <input
+                                  type="number"
+                                  value={service.duration}
+                                  onChange={(e) => {
+                                    const updatedServices = [...profile.services];
+                                    updatedServices[index] = { ...service, duration: parseInt(e.target.value) || 0 };
+                                    setProfile({ ...profile, services: updatedServices });
+                                  }}
+                                  className="w-full pl-10 pr-3 py-2 bg-background border border-input rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition"
+                                  placeholder="30"
+                                  min="1"
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium mb-1">
+                                Fiyat (₺)
+                              </label>
+                              <div className="relative">
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                  <span className="text-muted-foreground">₺</span>
+                                </div>
+                                <input
+                                  type="number"
+                                  value={service.price}
+                                  onChange={(e) => {
+                                    const updatedServices = [...profile.services];
+                                    updatedServices[index] = { ...service, price: parseInt(e.target.value) || 0 };
+                                    setProfile({ ...profile, services: updatedServices });
+                                  }}
+                                  className="w-full pl-10 pr-3 py-2 bg-background border border-input rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition"
+                                  placeholder="100"
+                                  min="1"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex justify-end">
+                  <button
+                              type="button"
+                              onClick={() => handleRemoveService(index)}
+                              className="text-destructive hover:text-destructive/90 transition flex items-center gap-1"
+                  >
+                              <X className="h-4 w-4" />
+                              <span>Hizmeti Sil</span>
+                  </button>
+                </div>
+                        </div>
+            </div>
+                    ))}
+
+                    <div className="mt-6 p-4 bg-background rounded-lg border border-input">
+                      <h4 className="text-sm font-medium mb-4">Yeni Hizmet Ekle</h4>
+                      <div className="space-y-4">
                         <div>
-                          <h4 className="font-medium">{service.name}</h4>
-                          <div className="mt-1 flex items-center space-x-4 text-sm text-muted-foreground">
-                            <span>{service.duration} dk</span>
-                            <span>{service.price} ₺</span>
+                          <label className="block text-sm font-medium mb-1">
+                            Hizmet Adı
+                          </label>
+                  <input
+                    type="text"
+                    value={newService.name}
+                    onChange={(e) => setNewService({ ...newService, name: e.target.value })}
+                            className="w-full px-4 py-2 bg-background border border-input rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition"
+                            placeholder="Örn: Saç Kesimi"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium mb-1">
+                              Süre (Dakika)
+                            </label>
+                            <div className="relative">
+                              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <Clock className="h-5 w-5 text-muted-foreground" />
+                              </div>
+                  <input
+                    type="number"
+                                value={newService.duration}
+                                onChange={(e) => setNewService({ ...newService, duration: parseInt(e.target.value) || 0 })}
+                                className="w-full pl-10 pr-3 py-2 bg-background border border-input rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition"
+                                placeholder="30"
+                                min="1"
+                              />
+                </div>
+              </div>
+                          <div>
+                            <label className="block text-sm font-medium mb-1">
+                              Fiyat (₺)
+                            </label>
+                            <div className="relative">
+                              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <span className="text-muted-foreground">₺</span>
+                      </div>
+                        <input
+                          type="number"
+                                value={newService.price}
+                                onChange={(e) => setNewService({ ...newService, price: parseInt(e.target.value) || 0 })}
+                                className="w-full pl-10 pr-3 py-2 bg-background border border-input rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition"
+                                placeholder="100"
+                                min="1"
+                        />
+                      </div>
                           </div>
                         </div>
                         <button
                           type="button"
-                          onClick={() => handleRemoveService(index)}
-                          className="rounded-md bg-destructive px-2 py-1 text-sm font-medium text-destructive-foreground hover:bg-destructive/90"
+                          onClick={handleAddService}
+                          className="w-full bg-primary text-primary-foreground py-2 px-4 rounded-lg font-medium hover:bg-primary/90 transition"
                         >
-                          Sil
+                          Hizmet Ekle
                         </button>
                       </div>
-                    ))}
-                  </div>
+            </div>
+          </div>
 
                   <div className="flex justify-end space-x-2">
                     <button
                       type="button"
-                      onClick={() => setEditing(false)}
-                      className="rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground"
+                      onClick={() => setEditingServices(false)}
+                      className="px-4 py-2 bg-background text-foreground rounded-lg hover:bg-accent hover:text-accent-foreground transition"
                     >
                       İptal
                     </button>
-                    <button
+                <button
                       type="submit"
                       disabled={loading}
-                      className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                      className="px-4 py-2 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition disabled:opacity-50 flex items-center gap-2"
                     >
-                      {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      Kaydet
-                    </button>
+                      {loading ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Kaydediliyor...
+                        </>
+                      ) : (
+                        'Değişiklikleri Kaydet'
+                      )}
+                </button>
                   </div>
                 </form>
               ) : (
@@ -513,12 +645,15 @@ export default function BarberProfile() {
                   {profile.services.map((service, index) => (
                     <div
                       key={index}
-                      className="rounded-lg border bg-background p-4"
+                      className="bg-background p-4 rounded-lg border border-input"
                     >
                       <h4 className="font-medium">{service.name}</h4>
-                      <div className="mt-2 flex items-center justify-between text-sm text-muted-foreground">
-                        <span>{service.duration} dk</span>
-                        <span>{service.price} ₺</span>
+                      <div className="mt-2 flex items-center justify-between text-sm">
+                        <div className="flex items-center text-muted-foreground">
+                          <Clock className="w-4 h-4 mr-1" />
+                          <span>{service.duration} dk</span>
+                        </div>
+                        <span className="font-medium">{service.price} ₺</span>
                       </div>
                     </div>
                   ))}
@@ -549,9 +684,9 @@ export default function BarberProfile() {
                           alt="Müşteri"
                           fill
                           className="object-cover"
-                        />
-                      </div>
-                      <div>
+                  />
+                </div>
+                <div>
                         <h4 className="font-medium">Ahmet Yılmaz</h4>
                         <p className="text-sm text-muted-foreground">
                           Saç Kesimi
@@ -574,9 +709,9 @@ export default function BarberProfile() {
                           alt="Müşteri"
                           fill
                           className="object-cover"
-                        />
-                      </div>
-                      <div>
+                  />
+                </div>
+                <div>
                         <h4 className="font-medium">Ayşe Demir</h4>
                         <p className="text-sm text-muted-foreground">
                           Saç Boyama
@@ -603,7 +738,7 @@ export default function BarberProfile() {
                 <p className="text-sm text-muted-foreground">
                   Bu ay +12 yeni müşteri
                 </p>
-              </div>
+          </div>
 
               <div className="rounded-lg border bg-card p-6">
                 <div className="flex items-center space-x-2">

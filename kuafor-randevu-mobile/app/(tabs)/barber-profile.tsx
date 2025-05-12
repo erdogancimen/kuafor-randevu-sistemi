@@ -1,140 +1,207 @@
-import { useState, useEffect } from 'react';
-import { StyleSheet, TextInput, TouchableOpacity, View, Image, ScrollView } from 'react-native';
-import { router } from 'expo-router';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
-import { auth } from '@/config/firebase';
-import { getBarbers, getReviews } from '@/services/firebase';
-import { Barber, Review, Service, WorkingHours } from '@/types';
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Image,
+  ScrollView,
+  Alert,
+} from 'react-native';
+import { useRouter } from 'expo-router';
+import { theme } from '@/utils/theme';
+import { Button } from '@/components/common/Button';
+import { Ionicons } from '@expo/vector-icons';
+import { getAuth } from 'firebase/auth';
+import { getFirestore, doc, getDoc } from 'firebase/firestore';
+
+interface BarberProfile {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  photoURL?: string;
+  location: string;
+  description: string;
+  rating: number;
+  reviews: number;
+  services: string[];
+  workingHours: Record<string, {
+    start: string;
+    end: string;
+    isClosed: boolean;
+  }>;
+}
 
 export default function BarberProfileScreen() {
-  const [barber, setBarber] = useState<Barber | null>(null);
-  const [reviews, setReviews] = useState<Review[]>([]);
+  const [profile, setProfile] = useState<BarberProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
+  const auth = getAuth();
 
   useEffect(() => {
-    const fetchBarber = async () => {
-      try {
-        const currentUser = auth.currentUser;
-        if (currentUser) {
-          const barbers = await getBarbers();
-          const barberData = barbers.find(b => b.email === currentUser.email);
-          if (barberData) {
-            setBarber(barberData);
-            const barberReviews = await getReviews(barberData.id);
-            setReviews(barberReviews);
-          }
-        }
-      } catch (error) {
-        console.error('Error fetching barber:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchBarber();
+    fetchBarberProfile();
   }, []);
 
-  const handleLogout = async () => {
+  const fetchBarberProfile = async () => {
     try {
-      await auth.signOut();
-      router.replace('/login');
+      const user = auth.currentUser;
+      if (!user) {
+        router.replace('/login');
+        return;
+      }
+
+      const db = getFirestore();
+      const barberDoc = await getDoc(doc(db, 'users', user.uid));
+      
+      if (barberDoc.exists()) {
+        setProfile(barberDoc.data() as BarberProfile);
+      }
     } catch (error) {
-      console.error('Error logging out:', error);
+      console.error('Error fetching barber profile:', error);
+      Alert.alert('Hata', 'Profil bilgileri yüklenirken bir hata oluştu');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEditProfile = () => {
+    router.push('/barber/profile/edit');
+  };
+
+  const getWorkingHours = (workingHours: Record<string, { start: string; end: string; isClosed: boolean }>) => {
+    if (!workingHours) return 'Çalışma saatleri bilgisi yok';
+    
+    try {
+      const today = new Date().toLocaleDateString('tr-TR', { weekday: 'long' });
+      const todayHours = workingHours[today];
+
+      if (todayHours?.isClosed) return 'Bugün kapalı';
+      if (!todayHours) return 'Çalışma saatleri bilgisi yok';
+
+      return `${todayHours.start} - ${todayHours.end}`;
+    } catch (error) {
+      return 'Çalışma saatleri bilgisi yok';
     }
   };
 
   if (loading) {
     return (
-      <ThemedView style={styles.container}>
-        <ThemedText>Yükleniyor...</ThemedText>
-      </ThemedView>
+      <View style={styles.loadingContainer}>
+        <Text>Yükleniyor...</Text>
+      </View>
     );
   }
 
-  if (!barber) {
+  if (!profile) {
     return (
-      <ThemedView style={styles.container}>
-        <ThemedText>Berber bulunamadı</ThemedText>
-        <TouchableOpacity style={styles.button} onPress={handleLogout}>
-          <ThemedText style={styles.buttonText}>Çıkış Yap</ThemedText>
-        </TouchableOpacity>
-      </ThemedView>
+      <View style={styles.errorContainer}>
+        <Text style={styles.errorText}>Profil bilgileri bulunamadı</Text>
+        <Button
+          title="Yeniden Dene"
+          onPress={fetchBarberProfile}
+          variant="primary"
+        />
+      </View>
     );
   }
 
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
-        {barber.photoUrl ? (
-          <Image source={{ uri: barber.photoUrl }} style={styles.avatar} />
-        ) : (
-          <View style={styles.avatarPlaceholder}>
-            <ThemedText style={styles.avatarText}>
-              {barber.name.charAt(0).toUpperCase()}
-            </ThemedText>
-          </View>
-        )}
-        <ThemedText type="title" style={styles.name}>{barber.name}</ThemedText>
-        <ThemedText style={styles.email}>{barber.email}</ThemedText>
+        <View style={styles.avatarContainer}>
+          {profile.photoURL ? (
+            <Image
+              source={{ uri: profile.photoURL }}
+              style={styles.avatar}
+            />
+          ) : (
+            <View style={styles.avatarPlaceholder}>
+              <Ionicons name="person" size={40} color={theme.colors.textSecondary} />
+            </View>
+          )}
+        </View>
+        <Text style={styles.name}>{`${profile.firstName} ${profile.lastName}`}</Text>
         <View style={styles.ratingContainer}>
-          <ThemedText style={styles.rating}>{barber.rating.toFixed(1)}</ThemedText>
-          <ThemedText style={styles.ratingText}>/ 5.0</ThemedText>
+          <Ionicons name="star" size={20} color={theme.colors.warning} />
+          <Text style={styles.rating}>
+            {profile.rating.toFixed(1)} ({profile.reviews} değerlendirme)
+          </Text>
         </View>
       </View>
 
-      <View style={styles.infoContainer}>
-        <View style={styles.infoItem}>
-          <ThemedText style={styles.label}>Telefon</ThemedText>
-          <ThemedText style={styles.value}>{barber.phone || 'Belirtilmemiş'}</ThemedText>
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Profil Bilgileri</Text>
+          <TouchableOpacity onPress={handleEditProfile}>
+            <Ionicons name="pencil" size={24} color={theme.colors.primary} />
+          </TouchableOpacity>
         </View>
 
-        <View style={styles.infoItem}>
-          <ThemedText style={styles.label}>Adres</ThemedText>
-          <ThemedText style={styles.value}>{barber.address || 'Belirtilmemiş'}</ThemedText>
-        </View>
+        <View style={styles.infoContainer}>
+          <View style={styles.infoRow}>
+            <Ionicons name="mail-outline" size={20} color={theme.colors.textSecondary} />
+            <Text style={styles.infoText}>{profile.email}</Text>
+          </View>
 
-        <View style={styles.infoItem}>
-          <ThemedText style={styles.label}>Hizmetler</ThemedText>
-          {barber.services?.map((service: Service) => (
-            <View key={service.id} style={styles.serviceItem}>
-              <ThemedText style={styles.serviceName}>{service.name}</ThemedText>
-              <ThemedText style={styles.servicePrice}>{service.price} TL</ThemedText>
-            </View>
-          ))}
-        </View>
+          <View style={styles.infoRow}>
+            <Ionicons name="call-outline" size={20} color={theme.colors.textSecondary} />
+            <Text style={styles.infoText}>{profile.phone}</Text>
+          </View>
 
-        <View style={styles.infoItem}>
-          <ThemedText style={styles.label}>Çalışma Saatleri</ThemedText>
-          {barber.workingHours?.map((hours: WorkingHours, index: number) => (
-            <View key={index} style={styles.workingHoursItem}>
-              <ThemedText style={styles.day}>
-                {['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'][hours.day]}
-              </ThemedText>
-              <ThemedText style={styles.hours}>
-                {hours.startTime} - {hours.endTime}
-              </ThemedText>
-            </View>
-          ))}
-        </View>
+          <View style={styles.infoRow}>
+            <Ionicons name="location-outline" size={20} color={theme.colors.textSecondary} />
+            <Text style={styles.infoText}>{profile.location}</Text>
+          </View>
 
-        <View style={styles.infoItem}>
-          <ThemedText style={styles.label}>Değerlendirmeler</ThemedText>
-          {reviews.map(review => (
-            <View key={review.id} style={styles.reviewItem}>
-              <ThemedText style={styles.reviewRating}>★ {review.rating}</ThemedText>
-              <ThemedText style={styles.reviewComment}>{review.comment}</ThemedText>
-              <ThemedText style={styles.reviewDate}>
-                {new Date(review.createdAt).toLocaleDateString('tr-TR')}
-              </ThemedText>
+          <View style={styles.infoRow}>
+            <Ionicons name="time-outline" size={20} color={theme.colors.textSecondary} />
+            <Text style={styles.infoText}>{getWorkingHours(profile.workingHours)}</Text>
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Hakkımda</Text>
+        <View style={styles.descriptionContainer}>
+          <Text style={styles.description}>{profile.description}</Text>
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Hizmetler</Text>
+        <View style={styles.servicesContainer}>
+          {profile.services.map((service, index) => (
+            <View key={index} style={styles.serviceItem}>
+              <Ionicons name="cut-outline" size={20} color={theme.colors.primary} />
+              <Text style={styles.serviceText}>{service}</Text>
             </View>
           ))}
         </View>
       </View>
 
-      <TouchableOpacity style={styles.button} onPress={handleLogout}>
-        <ThemedText style={styles.buttonText}>Çıkış Yap</ThemedText>
-      </TouchableOpacity>
+      <View style={styles.section}>
+        <View style={styles.buttonContainer}>
+          <Button
+            title="Çalışma Saatleri"
+            onPress={() => router.push('/barber/working-hours')}
+            variant="outline"
+            fullWidth
+          />
+          <Button
+            title="Hizmetler"
+            onPress={() => router.push('/barber/services')}
+            variant="outline"
+            fullWidth
+          />
+          <Button
+            title="Randevular"
+            onPress={() => router.push('/barber/appointments')}
+            variant="outline"
+            fullWidth
+          />
+        </View>
+      </View>
     </ScrollView>
   );
 }
@@ -142,123 +209,115 @@ export default function BarberProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 20,
+    backgroundColor: theme.colors.background,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: theme.spacing.lg,
+  },
+  errorText: {
+    ...theme.typography.body,
+    color: theme.colors.error,
+    marginBottom: theme.spacing.lg,
   },
   header: {
     alignItems: 'center',
-    marginBottom: 30,
+    padding: theme.spacing.xl,
+    backgroundColor: theme.colors.surface,
+  },
+  avatarContainer: {
+    marginBottom: theme.spacing.md,
   },
   avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    marginBottom: 15,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
   },
   avatarPlaceholder: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: '#007AFF',
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: theme.colors.background,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 15,
-  },
-  avatarText: {
-    color: 'white',
-    fontSize: 40,
-    fontWeight: 'bold',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
   },
   name: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 5,
-  },
-  email: {
-    color: '#666',
-    marginBottom: 10,
+    ...theme.typography.h2,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs,
   },
   ratingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   rating: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#007AFF',
+    ...theme.typography.body,
+    color: theme.colors.textSecondary,
+    marginLeft: theme.spacing.xs,
   },
-  ratingText: {
-    color: '#666',
-    marginLeft: 5,
+  section: {
+    padding: theme.spacing.lg,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: theme.spacing.md,
+  },
+  sectionTitle: {
+    ...theme.typography.h3,
+    color: theme.colors.text,
   },
   infoContainer: {
-    marginBottom: 30,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.lg,
+    padding: theme.spacing.lg,
   },
-  infoItem: {
-    marginBottom: 20,
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: theme.spacing.md,
   },
-  label: {
-    color: '#666',
-    marginBottom: 10,
-    fontSize: 16,
-    fontWeight: 'bold',
+  infoText: {
+    ...theme.typography.body,
+    color: theme.colors.text,
+    marginLeft: theme.spacing.md,
   },
-  value: {
-    fontSize: 16,
+  descriptionContainer: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.lg,
+    padding: theme.spacing.lg,
+  },
+  description: {
+    ...theme.typography.body,
+    color: theme.colors.text,
+    lineHeight: 24,
+  },
+  servicesContainer: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.lg,
+    padding: theme.spacing.lg,
   },
   serviceItem: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 5,
-  },
-  serviceName: {
-    fontSize: 16,
-  },
-  servicePrice: {
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  workingHoursItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 5,
-  },
-  day: {
-    fontSize: 16,
-  },
-  hours: {
-    fontSize: 16,
-    color: '#666',
-  },
-  reviewItem: {
-    backgroundColor: '#f5f5f5',
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 10,
-  },
-  reviewRating: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#007AFF',
-    marginBottom: 5,
-  },
-  reviewComment: {
-    fontSize: 16,
-    marginBottom: 5,
-  },
-  reviewDate: {
-    fontSize: 14,
-    color: '#666',
-  },
-  button: {
-    backgroundColor: '#007AFF',
-    padding: 15,
-    borderRadius: 10,
     alignItems: 'center',
-    marginTop: 20,
+    marginBottom: theme.spacing.md,
   },
-  buttonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
+  serviceText: {
+    ...theme.typography.body,
+    color: theme.colors.text,
+    marginLeft: theme.spacing.md,
+  },
+  buttonContainer: {
+    gap: theme.spacing.md,
   },
 }); 

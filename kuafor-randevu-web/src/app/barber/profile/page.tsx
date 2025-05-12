@@ -313,7 +313,7 @@ export default function BarberProfile() {
                           value={profile?.phone || ''}
                           onChange={(e) => handleProfileChange('phone', e.target.value)}
                           className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                        />
+                  />
                       </div>
                       <div>
                         <label className="text-sm font-medium">Adres</label>
@@ -628,7 +628,7 @@ export default function BarberProfile() {
                       type="submit"
                       disabled={loading}
                       className="px-4 py-2 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition disabled:opacity-50 flex items-center gap-2"
-                    >
+                >
                       {loading ? (
                         <>
                           <Loader2 className="h-4 w-4 animate-spin" />
@@ -646,7 +646,7 @@ export default function BarberProfile() {
                     <div
                       key={index}
                       className="bg-background p-4 rounded-lg border border-input"
-                    >
+                  >
                       <h4 className="font-medium">{service.name}</h4>
                       <div className="mt-2 flex items-center justify-between text-sm">
                         <div className="flex items-center text-muted-foreground">

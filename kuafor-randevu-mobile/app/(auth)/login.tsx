@@ -1,141 +1,217 @@
-import { useState } from 'react';
-import { StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
-import { router } from 'expo-router';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
-import { auth } from '@/config/firebase';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  StyleSheet,
+  TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+} from 'react-native';
+import { useRouter } from 'expo-router';
+import { theme } from '@/utils/theme';
+import { Button } from '@/components/common/Button';
+import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const router = useRouter();
 
   const handleLogin = async () => {
+    if (!email || !password) {
+      setError('Lütfen tüm alanları doldurun');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
     try {
-      setError('');
-      setLoading(true);
+      const auth = getAuth();
       await signInWithEmailAndPassword(auth, email, password);
       router.replace('/(tabs)');
     } catch (err: any) {
-      setError(err.message || 'Giriş başarısız. Lütfen bilgilerinizi kontrol edin.');
+      let errorMessage = 'Giriş yapılırken bir hata oluştu';
+      
+      switch (err.code) {
+        case 'auth/invalid-email':
+          errorMessage = 'Geçersiz e-posta adresi';
+          break;
+        case 'auth/user-disabled':
+          errorMessage = 'Bu hesap devre dışı bırakılmış';
+          break;
+        case 'auth/user-not-found':
+          errorMessage = 'Kullanıcı bulunamadı';
+          break;
+        case 'auth/wrong-password':
+          errorMessage = 'Hatalı şifre';
+          break;
+        default:
+          errorMessage = err.message;
+      }
+      
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <ThemedView style={styles.container}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={styles.container}
+    >
+      <ScrollView contentContainerStyle={styles.scrollContent}>
       <View style={styles.header}>
-        <ThemedText type="title" style={styles.title}>Kuaför Randevu</ThemedText>
-        <ThemedText style={styles.subtitle}>Giriş Yap</ThemedText>
+          <Text style={styles.title}>Hoş Geldiniz</Text>
+          <Text style={styles.subtitle}>Hesabınıza giriş yapın</Text>
       </View>
-
-      {error ? <ThemedText style={styles.error}>{error}</ThemedText> : null}
       
       <View style={styles.form}>
+          <View style={styles.inputContainer}>
+            <Text style={styles.label}>E-posta</Text>
+            <View style={styles.inputWrapper}>
+              <Ionicons name="mail-outline" size={20} color={theme.colors.textSecondary} style={styles.inputIcon} />
         <TextInput
           style={styles.input}
-          placeholder="E-posta"
+                placeholder="E-posta adresiniz"
           value={email}
           onChangeText={setEmail}
           keyboardType="email-address"
           autoCapitalize="none"
-          placeholderTextColor="#666"
+                placeholderTextColor={theme.colors.textMuted}
         />
+            </View>
+          </View>
         
+          <View style={styles.inputContainer}>
+            <Text style={styles.label}>Şifre</Text>
+            <View style={styles.inputWrapper}>
+              <Ionicons name="lock-closed-outline" size={20} color={theme.colors.textSecondary} style={styles.inputIcon} />
         <TextInput
           style={styles.input}
-          placeholder="Şifre"
+                placeholder="Şifreniz"
           value={password}
           onChangeText={setPassword}
-          secureTextEntry
-          placeholderTextColor="#666"
+                secureTextEntry={!showPassword}
+                placeholderTextColor={theme.colors.textMuted}
         />
-        
         <TouchableOpacity 
-          style={[styles.button, loading && styles.buttonDisabled]} 
+                onPress={() => setShowPassword(!showPassword)}
+                style={styles.passwordToggle}
+              >
+                <Ionicons
+                  name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                  size={20}
+                  color={theme.colors.textSecondary}
+                />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+        
+          <View style={styles.buttonContainer}>
+            <Button
+              title="Giriş Yap"
           onPress={handleLogin}
-          disabled={loading}
-        >
-          <ThemedText style={styles.buttonText}>
-            {loading ? 'Giriş Yapılıyor...' : 'Giriş Yap'}
-          </ThemedText>
-        </TouchableOpacity>
+              loading={loading}
+              variant="primary"
+              fullWidth
+            />
       </View>
 
-      <View style={styles.footer}>
-        <ThemedText style={styles.footerText}>Hesabınız yok mu? </ThemedText>
-        <TouchableOpacity onPress={() => router.push('/register')}>
-          <ThemedText style={styles.footerLink}>Kayıt Olun</ThemedText>
+          <TouchableOpacity
+            onPress={() => router.push('/register')}
+            style={styles.registerLink}
+          >
+            <Text style={styles.registerText}>
+              Hesabınız yok mu? <Text style={styles.registerTextBold}>Kayıt olun</Text>
+            </Text>
         </TouchableOpacity>
       </View>
-    </ThemedView>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 20,
-    justifyContent: 'center',
+    backgroundColor: theme.colors.background,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    padding: theme.spacing.lg,
   },
   header: {
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: theme.spacing.xl,
   },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    marginBottom: 10,
-    textAlign: 'center',
+    ...theme.typography.h1,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs,
   },
   subtitle: {
-    fontSize: 20,
-    color: '#666',
-    marginBottom: 30,
+    ...theme.typography.body,
+    color: theme.colors.textSecondary,
   },
   form: {
-    width: '100%',
+    gap: theme.spacing.lg,
+  },
+  inputContainer: {
+    gap: theme.spacing.xs,
+  },
+  label: {
+    ...theme.typography.bodySmall,
+    color: theme.colors.text,
+    marginLeft: theme.spacing.xs,
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.lg,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    paddingHorizontal: theme.spacing.md,
+  },
+  inputIcon: {
+    marginRight: theme.spacing.sm,
   },
   input: {
-    backgroundColor: '#f5f5f5',
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 15,
-    fontSize: 16,
+    flex: 1,
+    height: 48,
+    ...theme.typography.body,
   },
-  button: {
-    backgroundColor: '#007AFF',
-    padding: 15,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  buttonDisabled: {
-    opacity: 0.7,
-  },
-  buttonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
+  passwordToggle: {
+    padding: theme.spacing.xs,
   },
   error: {
-    color: 'red',
+    ...theme.typography.bodySmall,
+    color: theme.colors.error,
     textAlign: 'center',
-    marginBottom: 15,
   },
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 20,
+  buttonContainer: {
+    marginTop: theme.spacing.md,
   },
-  footerText: {
-    color: '#666',
+  registerLink: {
+    alignItems: 'center',
+    marginTop: theme.spacing.lg,
   },
-  footerLink: {
-    color: '#007AFF',
-    fontWeight: 'bold',
+  registerText: {
+    ...theme.typography.bodySmall,
+    color: theme.colors.textSecondary,
+  },
+  registerTextBold: {
+    color: theme.colors.primary,
+    fontWeight: '600',
   },
 }); 

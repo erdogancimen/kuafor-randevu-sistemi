@@ -1,26 +1,40 @@
-import { useState } from 'react';
-import { StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
-import { router } from 'expo-router';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
-import { auth } from '@/config/firebase';
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  Alert,
+  ActivityIndicator,
+} from 'react-native';
+import { useRouter } from 'expo-router';
+import { theme } from '@/utils/theme';
+import { Ionicons } from '@expo/vector-icons';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import { createUser } from '@/services/firebase';
+import { doc, setDoc } from 'firebase/firestore';
+import { auth, db } from '@/config/firebase';
 
 export default function CustomerRegisterScreen() {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const router = useRouter();
 
   const handleRegister = async () => {
-    try {
-      setError('');
+    if (password !== confirmPassword) {
+      Alert.alert('Hata', 'Şifreler eşleşmiyor');
+      return;
+    }
+
       setLoading(true);
 
+    try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
@@ -28,152 +42,184 @@ export default function CustomerRegisterScreen() {
         displayName: `${firstName} ${lastName}` 
       });
 
-      await createUser({
+      await setDoc(doc(db, 'users', user.uid), {
         firstName,
         lastName,
-        email,
         phone,
+        email,
         role: 'customer',
+        createdAt: new Date().toISOString()
       });
       
-      router.replace('/(tabs)');
-    } catch (err: any) {
-      setError(err.message || 'Kayıt başarısız. Lütfen bilgilerinizi kontrol edin.');
+      Alert.alert('Başarılı', 'Kayıt işlemi tamamlandı');
+      router.replace('/');
+    } catch (error: any) {
+      Alert.alert('Hata', error.message);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <ThemedView style={styles.container}>
+    <ScrollView style={styles.container}>
       <View style={styles.header}>
-        <ThemedText type="title" style={styles.title}>Müşteri Kaydı</ThemedText>
+        <Text style={styles.title}>Müşteri Kayıt</Text>
+        <Text style={styles.subtitle}>Hesap oluşturun ve randevu almaya başlayın</Text>
       </View>
-
-      {error ? <ThemedText style={styles.error}>{error}</ThemedText> : null}
       
       <View style={styles.form}>
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Ad</Text>
         <TextInput
           style={styles.input}
-          placeholder="Ad"
+            placeholder="Adınız"
           value={firstName}
           onChangeText={setFirstName}
-          placeholderTextColor="#666"
+            placeholderTextColor={theme.colors.textMuted}
         />
+        </View>
         
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Soyad</Text>
         <TextInput
           style={styles.input}
-          placeholder="Soyad"
+            placeholder="Soyadınız"
           value={lastName}
           onChangeText={setLastName}
-          placeholderTextColor="#666"
-        />
-        
+            placeholderTextColor={theme.colors.textMuted}
+          />
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Telefon</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Telefon numaranız"
+            value={phone}
+            onChangeText={setPhone}
+            keyboardType="phone-pad"
+            placeholderTextColor={theme.colors.textMuted}
+          />
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>E-posta</Text>
         <TextInput
           style={styles.input}
-          placeholder="E-posta"
+            placeholder="E-posta adresiniz"
           value={email}
           onChangeText={setEmail}
           keyboardType="email-address"
           autoCapitalize="none"
-          placeholderTextColor="#666"
+            placeholderTextColor={theme.colors.textMuted}
         />
+        </View>
         
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Şifre</Text>
         <TextInput
           style={styles.input}
-          placeholder="Telefon"
-          value={phone}
-          onChangeText={setPhone}
-          keyboardType="phone-pad"
-          placeholderTextColor="#666"
-        />
-        
-        <TextInput
-          style={styles.input}
-          placeholder="Şifre"
+            placeholder="Şifreniz"
           value={password}
           onChangeText={setPassword}
           secureTextEntry
-          placeholderTextColor="#666"
-        />
+            placeholderTextColor={theme.colors.textMuted}
+          />
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Şifre Tekrar</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Şifrenizi tekrar girin"
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
+            secureTextEntry
+            placeholderTextColor={theme.colors.textMuted}
+          />
+        </View>
         
         <TouchableOpacity 
-          style={[styles.button, loading && styles.buttonDisabled]} 
+          style={styles.registerButton}
           onPress={handleRegister}
           disabled={loading}
         >
-          <ThemedText style={styles.buttonText}>
-            {loading ? 'Kayıt Yapılıyor...' : 'Kayıt Ol'}
-          </ThemedText>
+          {loading ? (
+            <ActivityIndicator color={theme.colors.surface} />
+          ) : (
+            <Text style={styles.registerButtonText}>Kayıt Ol</Text>
+          )}
         </TouchableOpacity>
-      </View>
 
-      <View style={styles.footer}>
-        <ThemedText style={styles.footerText}>Zaten hesabınız var mı? </ThemedText>
+        <View style={styles.links}>
         <TouchableOpacity onPress={() => router.push('/login')}>
-          <ThemedText style={styles.footerLink}>Giriş Yapın</ThemedText>
+            <Text style={styles.link}>Zaten hesabınız var mı? Giriş yapın</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push('/register/barber')}>
+            <Text style={styles.link}>Kuaför olarak kayıt olmak için tıklayın</Text>
         </TouchableOpacity>
+        </View>
       </View>
-    </ThemedView>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 20,
-    justifyContent: 'center',
+    backgroundColor: theme.colors.background,
   },
   header: {
-    alignItems: 'center',
-    marginBottom: 40,
+    padding: theme.spacing.xl,
+    backgroundColor: theme.colors.primary,
   },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    marginBottom: 10,
-    textAlign: 'center',
+    ...theme.typography.h1,
+    color: theme.colors.surface,
+    marginBottom: theme.spacing.xs,
+  },
+  subtitle: {
+    ...theme.typography.body,
+    color: theme.colors.surface,
+    opacity: 0.8,
   },
   form: {
-    width: '100%',
+    padding: theme.spacing.lg,
+  },
+  inputGroup: {
+    marginBottom: theme.spacing.lg,
+  },
+  label: {
+    ...theme.typography.body,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs,
   },
   input: {
-    backgroundColor: '#f5f5f5',
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 15,
-    fontSize: 16,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.lg,
+    padding: theme.spacing.md,
+    color: theme.colors.text,
   },
-  button: {
-    backgroundColor: '#007AFF',
-    padding: 15,
-    borderRadius: 10,
+  registerButton: {
+    backgroundColor: theme.colors.primary,
+    padding: theme.spacing.md,
+    borderRadius: theme.borderRadius.lg,
     alignItems: 'center',
-    marginTop: 10,
+    marginTop: theme.spacing.xl,
   },
-  buttonDisabled: {
-    opacity: 0.7,
+  registerButtonText: {
+    ...theme.typography.button,
+    color: theme.colors.surface,
   },
-  buttonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
+  links: {
+    marginTop: theme.spacing.xl,
+    gap: theme.spacing.md,
   },
-  error: {
-    color: 'red',
+  link: {
+    ...theme.typography.bodySmall,
+    color: theme.colors.textSecondary,
     textAlign: 'center',
-    marginBottom: 15,
-  },
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 20,
-  },
-  footerText: {
-    color: '#666',
-  },
-  footerLink: {
-    color: '#007AFF',
-    fontWeight: 'bold',
   },
 }); 

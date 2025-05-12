@@ -49,7 +49,7 @@ export default function CustomerProfile() {
             photoURL: userData.photoURL || user.photoURL || '/images/default-avatar.jpg'
           };
           setProfile(defaultProfile);
-
+          
           // Fetch recent appointments
           const appointmentsRef = collection(db, 'appointments');
           const q = query(
@@ -73,7 +73,7 @@ export default function CustomerProfile() {
         console.error('Error fetching profile:', error);
         toast.error('Profil bilgileri yüklenirken bir hata oluştu');
       } finally {
-        setLoading(false);
+      setLoading(false);
       }
     });
 
@@ -176,8 +176,8 @@ export default function CustomerProfile() {
         <div className="mb-6 flex items-center justify-between">
           <h1 className="text-2xl font-bold">Müşteri Profili</h1>
           <div className="flex items-center space-x-4">
-            <button
-              onClick={() => router.push('/')}
+          <button
+            onClick={() => router.push('/')}
               className="flex items-center space-x-2 rounded-md bg-primary/10 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/20"
             >
               <Home className="h-4 w-4" />
@@ -186,10 +186,10 @@ export default function CustomerProfile() {
             <button
               onClick={handleSignOut}
               className="flex items-center space-x-2 rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90"
-            >
+          >
               <LogOut className="h-4 w-4" />
               <span>Çıkış Yap</span>
-            </button>
+          </button>
           </div>
         </div>
 
@@ -207,41 +207,41 @@ export default function CustomerProfile() {
                     className="object-cover"
                     priority
                   />
-                </div>
+                  </div>
                 <div className="text-center">
                   <h2 className="text-2xl font-semibold">{profile.name}</h2>
                   <p className="text-sm text-muted-foreground">Müşteri</p>
                 </div>
-              </div>
+            </div>
               <div className="mt-6 space-y-4">
                 {editing ? (
                   <form onSubmit={handleUpdateProfile} className="space-y-4">
-                    <div className="space-y-4">
-                      <div>
+            <div className="space-y-4">
+              <div>
                         <label className="text-sm font-medium">Ad Soyad</label>
-                        <input
-                          type="text"
+                  <input
+                    type="text"
                           value={profile.name}
                           onChange={(e) => handleProfileChange('name', e.target.value)}
                           className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                         />
-                      </div>
-                      <div>
+              </div>
+              <div>
                         <label className="text-sm font-medium">Telefon</label>
-                        <input
-                          type="tel"
+                  <input
+                    type="tel"
                           value={profile.phone}
                           onChange={(e) => handleProfileChange('phone', e.target.value)}
                           className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                         />
-                      </div>
-                      <div>
+              </div>
+              <div>
                         <label className="text-sm font-medium">Adres</label>
-                        <textarea
+                  <textarea
                           value={profile.address}
                           onChange={(e) => handleProfileChange('address', e.target.value)}
                           className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                          rows={3}
+                    rows={3}
                         />
                       </div>
                     </div>
@@ -310,7 +310,7 @@ export default function CustomerProfile() {
                     <div
                       key={appointment.id}
                       className="flex items-center justify-between rounded-lg border p-4"
-                    >
+                  >
                       <div className="space-y-1">
                         <p className="font-medium">{appointment.barberName}</p>
                         <p className="text-sm text-muted-foreground">
@@ -338,7 +338,7 @@ export default function CustomerProfile() {
                 <p className="text-sm text-muted-foreground">
                   Bu ay 3 randevu
                 </p>
-              </div>
+          </div>
 
               <div className="rounded-lg border bg-card p-6">
                 <div className="flex items-center space-x-2">
@@ -349,10 +349,10 @@ export default function CustomerProfile() {
                 <p className="text-sm text-muted-foreground">
                   Saç Kesimi
                 </p>
-              </div>
             </div>
+          </div>
 
-            {/* Favori Kuaförler */}
+          {/* Favori Kuaförler */}
             <div className="rounded-lg border bg-card p-6">
               <h3 className="text-lg font-semibold mb-4">Favori Kuaförlerim</h3>
               <FavoriteBarbers />

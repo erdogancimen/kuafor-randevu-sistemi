@@ -150,16 +150,16 @@ export default function BarberRegisterPage() {
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                       <User className="h-5 w-5 text-gray-400" />
                     </div>
-                    <input
-                      id="first-name"
-                      name="firstName"
-                      type="text"
-                      required
+                  <input
+                    id="first-name"
+                    name="firstName"
+                    type="text"
+                    required
                       className="w-full pl-10 pr-3 py-2 bg-gray-800/50 border border-white/10 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition text-white placeholder-gray-500"
-                      placeholder="Adınız"
-                      value={firstName}
-                      onChange={(e) => setFirstName(e.target.value)}
-                    />
+                    placeholder="Adınız"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                  />
                   </div>
                 </div>
                 <div>
@@ -170,16 +170,16 @@ export default function BarberRegisterPage() {
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                       <User className="h-5 w-5 text-gray-400" />
                     </div>
-                    <input
-                      id="last-name"
-                      name="lastName"
-                      type="text"
-                      required
+                  <input
+                    id="last-name"
+                    name="lastName"
+                    type="text"
+                    required
                       className="w-full pl-10 pr-3 py-2 bg-gray-800/50 border border-white/10 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition text-white placeholder-gray-500"
-                      placeholder="Soyadınız"
-                      value={lastName}
-                      onChange={(e) => setLastName(e.target.value)}
-                    />
+                    placeholder="Soyadınız"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                  />
                   </div>
                 </div>
               </div>
@@ -192,16 +192,16 @@ export default function BarberRegisterPage() {
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <Phone className="h-5 w-5 text-gray-400" />
                   </div>
-                  <input
-                    id="phone"
-                    name="phone"
-                    type="tel"
-                    required
+                <input
+                  id="phone"
+                  name="phone"
+                  type="tel"
+                  required
                     className="w-full pl-10 pr-3 py-2 bg-gray-800/50 border border-white/10 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition text-white placeholder-gray-500"
-                    placeholder="Telefon numaranız"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                  />
+                  placeholder="Telefon numaranız"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                />
                 </div>
               </div>
 
@@ -213,16 +213,16 @@ export default function BarberRegisterPage() {
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <Mail className="h-5 w-5 text-gray-400" />
                   </div>
-                  <input
-                    id="email"
-                    name="email"
-                    type="email"
-                    required
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  required
                     className="w-full pl-10 pr-3 py-2 bg-gray-800/50 border border-white/10 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition text-white placeholder-gray-500"
-                    placeholder="E-posta adresiniz"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                  />
+                  placeholder="E-posta adresiniz"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
                 </div>
               </div>
 
@@ -234,16 +234,16 @@ export default function BarberRegisterPage() {
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <MapPin className="h-5 w-5 text-gray-400" />
                   </div>
-                  <input
-                    id="address"
-                    name="address"
-                    type="text"
-                    required
+                <input
+                  id="address"
+                  name="address"
+                  type="text"
+                  required
                     className="w-full pl-10 pr-3 py-2 bg-gray-800/50 border border-white/10 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition text-white placeholder-gray-500"
-                    placeholder="İşletme adresiniz"
-                    value={address}
-                    onChange={(e) => setAddress(e.target.value)}
-                  />
+                  placeholder="İşletme adresiniz"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                />
                 </div>
               </div>
 
@@ -255,16 +255,16 @@ export default function BarberRegisterPage() {
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <Clock className="h-5 w-5 text-gray-400" />
                   </div>
-                  <input
-                    id="working-hours"
-                    name="workingHours"
-                    type="text"
-                    required
+                <input
+                  id="working-hours"
+                  name="workingHours"
+                  type="text"
+                  required
                     className="w-full pl-10 pr-3 py-2 bg-gray-800/50 border border-white/10 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition text-white placeholder-gray-500"
-                    placeholder="Örn: 09:00-18:00"
-                    value={workingHours}
-                    onChange={(e) => setWorkingHours(e.target.value)}
-                  />
+                  placeholder="Örn: 09:00-18:00"
+                  value={workingHours}
+                  onChange={(e) => setWorkingHours(e.target.value)}
+                />
                 </div>
               </div>
 
@@ -331,18 +331,18 @@ export default function BarberRegisterPage() {
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <Scissors className="h-5 w-5 text-gray-400" />
                   </div>
-                  <select
-                    id="barber-type"
-                    name="barberType"
-                    required
+                <select
+                  id="barber-type"
+                  name="barberType"
+                  required
                     className="w-full pl-10 pr-3 py-2 bg-gray-800/50 border border-white/10 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition text-white"
-                    value={barberType}
-                    onChange={(e) => setBarberType(e.target.value)}
-                  >
-                    <option value="male">Erkek Kuaförü</option>
-                    <option value="female">Kadın Kuaförü</option>
-                    <option value="mixed">Karma Kuaför</option>
-                  </select>
+                  value={barberType}
+                  onChange={(e) => setBarberType(e.target.value)}
+                >
+                  <option value="male">Erkek Kuaförü</option>
+                  <option value="female">Kadın Kuaförü</option>
+                  <option value="mixed">Karma Kuaför</option>
+                </select>
                 </div>
               </div>
 
@@ -354,16 +354,16 @@ export default function BarberRegisterPage() {
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <Lock className="h-5 w-5 text-gray-400" />
                   </div>
-                  <input
-                    id="password"
-                    name="password"
-                    type="password"
-                    required
+                <input
+                  id="password"
+                  name="password"
+                  type="password"
+                  required
                     className="w-full pl-10 pr-3 py-2 bg-gray-800/50 border border-white/10 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition text-white placeholder-gray-500"
-                    placeholder="Şifreniz"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                  />
+                  placeholder="Şifreniz"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
                 </div>
               </div>
 
@@ -375,16 +375,16 @@ export default function BarberRegisterPage() {
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <Lock className="h-5 w-5 text-gray-400" />
                   </div>
-                  <input
-                    id="confirm-password"
-                    name="confirmPassword"
-                    type="password"
-                    required
+                <input
+                  id="confirm-password"
+                  name="confirmPassword"
+                  type="password"
+                  required
                     className="w-full pl-10 pr-3 py-2 bg-gray-800/50 border border-white/10 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition text-white placeholder-gray-500"
-                    placeholder="Şifrenizi tekrarınız"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                  />
+                  placeholder="Şifrenizi tekrarınız"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                />
                 </div>
               </div>
 

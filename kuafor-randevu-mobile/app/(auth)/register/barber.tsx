@@ -1,34 +1,83 @@
-import { useState } from 'react';
-import { StyleSheet, TextInput, TouchableOpacity, View, Modal } from 'react-native';
-import { router } from 'expo-router';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
-import { auth } from '@/config/firebase';
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  Alert,
+  ActivityIndicator,
+} from 'react-native';
+import { useRouter } from 'expo-router';
+import { theme } from '@/utils/theme';
+import { Ionicons } from '@expo/vector-icons';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import { createUser } from '@/services/firebase';
+import { doc, setDoc } from 'firebase/firestore';
+import { auth, db } from '@/config/firebase';
 
-const BARBER_TYPES = [
-  { label: 'Erkek Kuaförü', value: 'male' },
-  { label: 'Kadın Kuaförü', value: 'female' },
-  { label: 'Karma Kuaför', value: 'mixed' },
-];
+interface Service {
+  name: string;
+  price: number;
+  duration: number;
+}
 
 export default function BarberRegisterScreen() {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [barberType, setBarberType] = useState<'male' | 'female' | 'mixed'>('male');
-  const [showPicker, setShowPicker] = useState(false);
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [address, setAddress] = useState('');
+  const [barberType, setBarberType] = useState('male');
+  const [workingHours, setWorkingHours] = useState('');
+  const [services, setServices] = useState<Service[]>([]);
+  const [newService, setNewService] = useState({ name: '', price: '', duration: '' });
   const [loading, setLoading] = useState(false);
+  const router = useRouter();
+
+  const handleAddService = () => {
+    if (!newService.name.trim() || !newService.price.trim() || !newService.duration.trim()) {
+      Alert.alert('Hata', 'Lütfen hizmet adı, ücreti ve süresini girin');
+      return;
+    }
+
+    const price = parseFloat(newService.price);
+    const duration = parseInt(newService.duration);
+    
+    if (isNaN(price) || price <= 0) {
+      Alert.alert('Hata', 'Geçerli bir ücret girin');
+      return;
+    }
+
+    if (isNaN(duration) || duration <= 0) {
+      Alert.alert('Hata', 'Geçerli bir süre girin (dakika)');
+      return;
+    }
+
+    setServices([...services, { name: newService.name, price, duration }]);
+    setNewService({ name: '', price: '', duration: '' });
+  };
+
+  const handleRemoveService = (index: number) => {
+    setServices(services.filter((_, i) => i !== index));
+  };
 
   const handleRegister = async () => {
-    try {
-      setError('');
-      setLoading(true);
+    if (password !== confirmPassword) {
+      Alert.alert('Hata', 'Şifreler eşleşmiyor');
+      return;
+    }
 
+    if (services.length === 0) {
+      Alert.alert('Hata', 'En az bir hizmet eklemelisiniz');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
@@ -36,231 +85,368 @@ export default function BarberRegisterScreen() {
         displayName: `${firstName} ${lastName}` 
       });
 
-      await createUser({
+      await setDoc(doc(db, 'users', user.uid), {
         firstName,
         lastName,
-        email,
         phone,
+        email,
+        address,
         barberType,
         role: 'barber',
-      }, user.uid);
-      
-      router.replace('/(tabs)');
-    } catch (err: any) {
-      setError(err.message || 'Kayıt başarısız. Lütfen bilgilerinizi kontrol edin.');
+        workingHours,
+        services,
+        rating: 0,
+        createdAt: new Date().toISOString()
+      });
+
+      Alert.alert('Başarılı', 'Kayıt işlemi tamamlandı');
+      router.replace('/');
+    } catch (error: any) {
+      Alert.alert('Hata', error.message);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <ThemedView style={styles.container}>
+    <ScrollView style={styles.container}>
       <View style={styles.header}>
-        <ThemedText type="title" style={styles.title}>Kuaför Kaydı</ThemedText>
+        <Text style={styles.title}>Kuaför Kayıt</Text>
+        <Text style={styles.subtitle}>İşletmenizi kaydedin ve müşterilerinizi yönetin</Text>
       </View>
-
-      {error ? <ThemedText style={styles.error}>{error}</ThemedText> : null}
       
       <View style={styles.form}>
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Ad</Text>
         <TextInput
           style={styles.input}
-          placeholder="Ad"
+            placeholder="Adınız"
           value={firstName}
           onChangeText={setFirstName}
-          placeholderTextColor="#666"
+            placeholderTextColor={theme.colors.textMuted}
         />
+        </View>
         
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Soyad</Text>
         <TextInput
           style={styles.input}
-          placeholder="Soyad"
+            placeholder="Soyadınız"
           value={lastName}
           onChangeText={setLastName}
-          placeholderTextColor="#666"
-        />
-        
+            placeholderTextColor={theme.colors.textMuted}
+          />
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Telefon</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Telefon numaranız"
+            value={phone}
+            onChangeText={setPhone}
+            keyboardType="phone-pad"
+            placeholderTextColor={theme.colors.textMuted}
+          />
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>E-posta</Text>
         <TextInput
           style={styles.input}
-          placeholder="E-posta"
+            placeholder="E-posta adresiniz"
           value={email}
           onChangeText={setEmail}
           keyboardType="email-address"
           autoCapitalize="none"
-          placeholderTextColor="#666"
-        />
-        
+            placeholderTextColor={theme.colors.textMuted}
+          />
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Şifre</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Şifreniz"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            placeholderTextColor={theme.colors.textMuted}
+          />
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Şifre Tekrar</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Şifrenizi tekrar girin"
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
+            secureTextEntry
+            placeholderTextColor={theme.colors.textMuted}
+          />
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Adres</Text>
         <TextInput
           style={styles.input}
-          placeholder="Telefon"
-          value={phone}
-          onChangeText={setPhone}
-          keyboardType="phone-pad"
-          placeholderTextColor="#666"
+            placeholder="İşletme adresiniz"
+            value={address}
+            onChangeText={setAddress}
+            multiline
+            numberOfLines={3}
+            placeholderTextColor={theme.colors.textMuted}
         />
+        </View>
 
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Kuaför Türü</Text>
+          <View style={styles.pickerContainer}>
         <TouchableOpacity 
-          style={styles.input}
-          onPress={() => setShowPicker(true)}
+              style={[
+                styles.pickerOption,
+                barberType === 'male' && styles.pickerOptionSelected,
+              ]}
+              onPress={() => setBarberType('male')}
         >
-          <ThemedText style={styles.pickerText}>
-            {BARBER_TYPES.find(type => type.value === barberType)?.label || 'Kuaför Türü Seçin'}
-          </ThemedText>
+              <Text style={[
+                styles.pickerOptionText,
+                barberType === 'male' && styles.pickerOptionTextSelected,
+              ]}>Erkek Kuaförü</Text>
         </TouchableOpacity>
-
-        <Modal
-          visible={showPicker}
-          transparent={true}
-          animationType="slide"
-          onRequestClose={() => setShowPicker(false)}
+            <TouchableOpacity
+              style={[
+                styles.pickerOption,
+                barberType === 'female' && styles.pickerOptionSelected,
+              ]}
+              onPress={() => setBarberType('female')}
         >
-          <View style={styles.modalContainer}>
-            <View style={styles.modalContent}>
-              {BARBER_TYPES.map((type) => (
+              <Text style={[
+                styles.pickerOptionText,
+                barberType === 'female' && styles.pickerOptionTextSelected,
+              ]}>Kadın Kuaförü</Text>
+            </TouchableOpacity>
                 <TouchableOpacity
-                  key={type.value}
-                  style={styles.pickerItem}
-                  onPress={() => {
-                    setBarberType(type.value as 'male' | 'female' | 'mixed');
-                    setShowPicker(false);
-                  }}
+              style={[
+                styles.pickerOption,
+                barberType === 'mixed' && styles.pickerOptionSelected,
+              ]}
+              onPress={() => setBarberType('mixed')}
                 >
-                  <ThemedText style={styles.pickerItemText}>{type.label}</ThemedText>
+              <Text style={[
+                styles.pickerOptionText,
+                barberType === 'mixed' && styles.pickerOptionTextSelected,
+              ]}>Karma Kuaför</Text>
                 </TouchableOpacity>
-              ))}
-            </View>
           </View>
-        </Modal>
+        </View>
         
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Çalışma Saatleri</Text>
         <TextInput
           style={styles.input}
-          placeholder="Şifre"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-          placeholderTextColor="#666"
-        />
+            placeholder="Örn: 09:00-18:00"
+            value={workingHours}
+            onChangeText={setWorkingHours}
+            placeholderTextColor={theme.colors.textMuted}
+          />
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Hizmetler</Text>
+          <View style={styles.serviceInputs}>
+            <TextInput
+              style={[styles.input, styles.serviceInput]}
+              placeholder="Hizmet adı"
+              value={newService.name}
+              onChangeText={(text) => setNewService({ ...newService, name: text })}
+              placeholderTextColor={theme.colors.textMuted}
+            />
+            <TextInput
+              style={[styles.input, styles.serviceInput]}
+              placeholder="Ücret"
+              value={newService.price}
+              onChangeText={(text) => setNewService({ ...newService, price: text })}
+              keyboardType="numeric"
+              placeholderTextColor={theme.colors.textMuted}
+            />
+            <TextInput
+              style={[styles.input, styles.serviceInput]}
+              placeholder="Süre (dk)"
+              value={newService.duration}
+              onChangeText={(text) => setNewService({ ...newService, duration: text })}
+              keyboardType="numeric"
+              placeholderTextColor={theme.colors.textMuted}
+            />
+            <TouchableOpacity
+              style={styles.addServiceButton}
+              onPress={handleAddService}
+            >
+              <Ionicons name="add" size={24} color={theme.colors.surface} />
+            </TouchableOpacity>
+          </View>
+
+          {services.map((service, index) => (
+            <View key={index} style={styles.serviceItem}>
+              <View>
+                <Text style={styles.serviceName}>{service.name}</Text>
+                <Text style={styles.serviceDetails}>
+                  {service.price} TL - {service.duration} dakika
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => handleRemoveService(index)}
+                style={styles.removeServiceButton}
+              >
+                <Ionicons name="close" size={24} color={theme.colors.error} />
+              </TouchableOpacity>
+            </View>
+          ))}
+        </View>
         
         <TouchableOpacity 
-          style={[styles.button, loading && styles.buttonDisabled]} 
+          style={styles.registerButton}
           onPress={handleRegister}
           disabled={loading}
         >
-          <ThemedText style={styles.buttonText}>
-            {loading ? 'Kayıt Yapılıyor...' : 'Kayıt Ol'}
-          </ThemedText>
+          {loading ? (
+            <ActivityIndicator color={theme.colors.surface} />
+          ) : (
+            <Text style={styles.registerButtonText}>Kayıt Ol</Text>
+          )}
         </TouchableOpacity>
 
-        <TouchableOpacity 
-          style={styles.switchButton}
-          onPress={() => router.push('/register')}
-        >
-          <ThemedText style={styles.switchButtonText}>
-            Müşteri olarak kayıt olmak için tıklayın
-          </ThemedText>
+        <View style={styles.links}>
+          <TouchableOpacity onPress={() => router.push('/login')}>
+            <Text style={styles.link}>Zaten hesabınız var mı? Giriş yapın</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push('/register/customer')}>
+            <Text style={styles.link}>Müşteri olarak kayıt olmak için tıklayın</Text>
         </TouchableOpacity>
       </View>
-
-      <View style={styles.footer}>
-        <ThemedText style={styles.footerText}>Zaten hesabınız var mı? </ThemedText>
-        <TouchableOpacity onPress={() => router.push('/login')}>
-          <ThemedText style={styles.footerLink}>Giriş Yapın</ThemedText>
-        </TouchableOpacity>
       </View>
-    </ThemedView>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 20,
-    justifyContent: 'center',
+    backgroundColor: theme.colors.background,
   },
   header: {
-    alignItems: 'center',
-    marginBottom: 40,
+    padding: theme.spacing.xl,
+    backgroundColor: theme.colors.primary,
   },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    marginBottom: 10,
-    textAlign: 'center',
+    ...theme.typography.h1,
+    color: theme.colors.surface,
+    marginBottom: theme.spacing.xs,
+  },
+  subtitle: {
+    ...theme.typography.body,
+    color: theme.colors.surface,
+    opacity: 0.8,
   },
   form: {
-    width: '100%',
+    padding: theme.spacing.lg,
+  },
+  inputGroup: {
+    marginBottom: theme.spacing.lg,
+  },
+  label: {
+    ...theme.typography.body,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs,
   },
   input: {
-    backgroundColor: '#f5f5f5',
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 15,
-    fontSize: 16,
-  },
-  pickerText: {
-    color: '#666',
-  },
-  modalContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  modalContent: {
-    backgroundColor: 'white',
-    borderRadius: 10,
-    padding: 20,
-    width: '80%',
-  },
-  pickerItem: {
-    padding: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f5f5f5',
-  },
-  pickerItemText: {
-    fontSize: 16,
-  },
-  button: {
-    backgroundColor: '#007AFF',
-    padding: 15,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  buttonDisabled: {
-    opacity: 0.7,
-  },
-  buttonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  switchButton: {
-    padding: 15,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginTop: 10,
+    backgroundColor: theme.colors.surface,
     borderWidth: 1,
-    borderColor: '#007AFF',
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.lg,
+    padding: theme.spacing.md,
+    color: theme.colors.text,
   },
-  switchButtonText: {
-    color: '#007AFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  error: {
-    color: 'red',
-    textAlign: 'center',
-    marginBottom: 15,
-  },
-  footer: {
+  pickerContainer: {
     flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+  pickerOption: {
+    flex: 1,
+    padding: theme.spacing.md,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.lg,
+    alignItems: 'center',
+  },
+  pickerOptionSelected: {
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary,
+  },
+  pickerOptionText: {
+    ...theme.typography.body,
+    color: theme.colors.text,
+  },
+  pickerOptionTextSelected: {
+    color: theme.colors.surface,
+  },
+  serviceInputs: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    marginBottom: theme.spacing.md,
+  },
+  serviceInput: {
+    flex: 1,
+  },
+  addServiceButton: {
+    backgroundColor: theme.colors.primary,
+    borderRadius: theme.borderRadius.lg,
+    width: 48,
+    height: 48,
     justifyContent: 'center',
-    marginTop: 20,
+    alignItems: 'center',
   },
-  footerText: {
-    color: '#666',
+  serviceItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: theme.colors.surface,
+    padding: theme.spacing.md,
+    borderRadius: theme.borderRadius.lg,
+    marginBottom: theme.spacing.sm,
   },
-  footerLink: {
-    color: '#007AFF',
-    fontWeight: 'bold',
+  serviceName: {
+    ...theme.typography.body,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs,
+  },
+  serviceDetails: {
+    ...theme.typography.bodySmall,
+    color: theme.colors.textSecondary,
+  },
+  removeServiceButton: {
+    padding: theme.spacing.xs,
+  },
+  registerButton: {
+    backgroundColor: theme.colors.primary,
+    padding: theme.spacing.md,
+    borderRadius: theme.borderRadius.lg,
+    alignItems: 'center',
+    marginTop: theme.spacing.xl,
+  },
+  registerButtonText: {
+    ...theme.typography.button,
+    color: theme.colors.surface,
+  },
+  links: {
+    marginTop: theme.spacing.xl,
+    gap: theme.spacing.md,
+  },
+  link: {
+    ...theme.typography.bodySmall,
+    color: theme.colors.textSecondary,
+    textAlign: 'center',
   },
 }); 

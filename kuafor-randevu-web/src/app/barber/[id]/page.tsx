@@ -261,19 +261,19 @@ export default function BarberDetailPage() {
         <div className="relative container mx-auto px-4 py-16">
           <div className="flex flex-col md:flex-row items-center gap-8">
             <div className="relative h-32 w-32 md:h-40 md:w-40 rounded-full overflow-hidden bg-white/5 border-4 border-white/10">
-              <Image
+                  <Image
                 src="/images/default-barber.jpg"
-                alt={`${barber.firstName} ${barber.lastName}`}
-                fill
+                    alt={`${barber.firstName} ${barber.lastName}`}
+                    fill
                 sizes="(max-width: 768px) 128px, 160px"
-                className="object-cover"
-              />
+                    className="object-cover"
+                  />
             </div>
             <div className="text-center md:text-left">
               <div className="flex items-center justify-center md:justify-start gap-2">
                 <h1 className="text-3xl md:text-4xl font-bold text-white">
-                  {barber.firstName} {barber.lastName}
-                </h1>
+                {barber.firstName} {barber.lastName}
+              </h1>
                 <FavoriteButton
                   barberId={barber.id}
                   barberName={`${barber.firstName} ${barber.lastName}`}
@@ -310,32 +310,32 @@ export default function BarberDetailPage() {
           <div className="lg:col-span-2 space-y-8">
             <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl shadow-sm p-6 border border-white/10">
               <h2 className="text-2xl font-bold text-white mb-6">Hizmetler</h2>
-              <div className="space-y-4">
-                {barber.services?.map((service, index) => (
-                  <div
-                    key={index}
-                    className={`flex items-center justify-between p-4 rounded-lg cursor-pointer transition ${
-                      selectedService === service.name
+            <div className="space-y-4">
+              {barber.services?.map((service, index) => (
+                <div
+                  key={index}
+                  className={`flex items-center justify-between p-4 rounded-lg cursor-pointer transition ${
+                    selectedService === service.name
                         ? 'bg-primary/20 border-2 border-primary'
                         : 'bg-gray-800/50 border border-white/10 hover:border-primary/50'
-                    }`}
+                  }`}
                     onClick={() => {
                       console.log('Selected Service:', service);
                       setSelectedService(service.name);
                     }}
-                  >
-                    <div>
+                >
+                  <div>
                       <h3 className="font-medium text-white">{service.name}</h3>
                       <div className="flex items-center text-sm text-gray-400 mt-1">
-                        <Clock className="w-4 h-4 mr-1" />
-                        <span>{service.duration} dakika</span>
-                      </div>
-                    </div>
-                    <div className="text-lg font-semibold text-white">
-                      {service.price} TL
+                      <Clock className="w-4 h-4 mr-1" />
+                      <span>{service.duration} dakika</span>
                     </div>
                   </div>
-                ))}
+                    <div className="text-lg font-semibold text-white">
+                    {service.price} TL
+                  </div>
+                </div>
+              ))}
               </div>
             </div>
 

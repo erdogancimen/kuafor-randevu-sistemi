@@ -8,6 +8,7 @@ import { updateProfile, updatePassword, EmailAuthProvider, reauthenticateWithCre
 import { User, Calendar, Bell, Lock, Edit2, X, Check, Menu, LogOut, Loader2, MapPin, Phone, Mail, Clock, Scissors, Users, Settings } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import Image from 'next/image';
+import NotificationList from '@/components/notifications/NotificationList';
 
 interface BarberProfile {
   name: string;
@@ -237,11 +238,14 @@ export default function BarberProfile() {
               <span>Çıkış Yap</span>
             </button>
             
+            {/* Notification Button */}
+            <NotificationList />
+            
             {/* Hamburger Menu Button */}
                 <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
               className="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white"
-                >
+            >
               {isMenuOpen ? (
                 <X className="h-6 w-6" />
               ) : (

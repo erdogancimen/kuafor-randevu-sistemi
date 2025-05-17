@@ -2,13 +2,14 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { doc, getDoc, collection, addDoc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, collection, addDoc, serverTimestamp, query, where, getDocs, DocumentReference } from 'firebase/firestore';
 import { db, auth } from '@/config/firebase';
 import Image from 'next/image';
 import { MapPin, Star, Clock, Scissors, Phone, Mail, Calendar, Loader2, Home, Check, X } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import ReviewList from '@/components/ReviewList';
 import FavoriteButton from '@/components/FavoriteButton';
+import { createNotification } from '@/lib/firebase/notifications';
 
 interface Barber {
   id: string;
@@ -41,7 +42,7 @@ interface Appointment {
 }
 
 export default function BarberDetailPage() {
-  const params = useParams();
+  const params = useParams<{ id: string }>();
   const router = useRouter();
   const [barber, setBarber] = useState<Barber | null>(null);
   const [loading, setLoading] = useState(true);
@@ -54,10 +55,20 @@ export default function BarberDetailPage() {
 
   useEffect(() => {
     const fetchBarber = async () => {
+      if (!params?.id) {
+        toast.error('Kuaför ID bulunamadı');
+        setLoading(false);
+        return;
+      }
+
       try {
-        const barberDoc = await getDoc(doc(db, 'users', params.id as string));
+        const barberRef = doc(db, 'users', params.id) as DocumentReference;
+        const barberDoc = await getDoc(barberRef);
+        
         if (barberDoc.exists()) {
           setBarber({ id: barberDoc.id, ...barberDoc.data() } as Barber);
+        } else {
+          toast.error('Kuaför bulunamadı');
         }
       } catch (error) {
         console.error('Error fetching barber:', error);
@@ -68,7 +79,7 @@ export default function BarberDetailPage() {
     };
 
     fetchBarber();
-  }, [params.id]);
+  }, [params?.id]);
 
   useEffect(() => {
     const fetchAppointments = async () => {
@@ -165,15 +176,30 @@ export default function BarberDetailPage() {
 
   const handleBooking = async (e: React.FormEvent) => {
     e.preventDefault();
+    
     if (!auth.currentUser) {
       toast.error('Lütfen önce giriş yapın');
       router.push('/login');
       return;
     }
 
+    if (!barber?.id) {
+      toast.error('Kuaför bilgileri eksik');
+      return;
+    }
+
     try {
-      // Kullanıcı tipini kontrol et
-      const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
+      setBookingLoading(true);
+
+      // Kullanıcı bilgilerini al
+      const userRef = doc(db, 'users', auth.currentUser.uid) as DocumentReference;
+      const userDoc = await getDoc(userRef);
+      
+      if (!userDoc.exists()) {
+        toast.error('Kullanıcı bilgileri bulunamadı');
+        return;
+      }
+
       const userData = userDoc.data();
       
       if (userData?.role === 'barber') {
@@ -181,21 +207,56 @@ export default function BarberDetailPage() {
         return;
       }
 
-      setBookingLoading(true);
-      const selectedServiceData = barber?.services?.find(s => s.name === selectedService);
+      const selectedServiceData = barber.services?.find(s => s.name === selectedService);
+      if (!selectedServiceData) {
+        toast.error('Hizmet bilgileri bulunamadı');
+        return;
+      }
       
-      await addDoc(collection(db, 'appointments'), {
+      // Randevuyu oluştur
+      const appointmentsRef = collection(db, 'appointments');
+      const appointmentRef = await addDoc(appointmentsRef, {
         userId: auth.currentUser.uid,
-        barberId: barber?.id,
-        barberName: `${barber?.firstName} ${barber?.lastName}`,
+        barberId: barber.id,
+        barberName: `${barber.firstName} ${barber.lastName}`,
         service: selectedService,
         date: selectedDate,
         time: selectedTime,
-        price: selectedServiceData?.price,
-        duration: selectedServiceData?.duration,
+        price: selectedServiceData.price,
+        duration: selectedServiceData.duration,
         status: 'pending',
         createdAt: serverTimestamp()
       });
+
+      console.log('Appointment created:', appointmentRef.id);
+
+      try {
+        // Berbere bildirim gönder
+        await createNotification({
+          userId: barber.id,
+          title: 'Yeni Randevu',
+          message: `${userData.firstName} ${userData.lastName} adlı müşteri randevu talebinde bulundu.`,
+          type: 'appointment',
+          read: false,
+          data: { appointmentId: appointmentRef.id }
+        });
+        console.log('Barber notification created');
+
+        // Müşteriye bildirim gönder
+        await createNotification({
+          userId: auth.currentUser.uid,
+          title: 'Randevu Talebi',
+          message: 'Randevu talebiniz berbere iletildi. Onay bekleniyor.',
+          type: 'appointment',
+          read: false,
+          data: { appointmentId: appointmentRef.id }
+        });
+        console.log('Customer notification created');
+      } catch (notificationError) {
+        console.error('Error creating notifications:', notificationError);
+        // Bildirim hatası olsa bile randevu oluşturulduğunu bildir
+        toast.success('Randevunuz oluşturuldu, ancak bildirimler gönderilemedi');
+      }
 
       toast.success('Randevunuz başarıyla oluşturuldu!');
       router.push('/appointments');

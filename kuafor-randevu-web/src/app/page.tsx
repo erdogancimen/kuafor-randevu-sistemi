@@ -8,6 +8,7 @@ import { db } from '@/config/firebase';
 import { signOut } from 'firebase/auth';
 import Image from 'next/image';
 import { MapPin, Star, Clock, LogOut, Search, Map, Filter, Calendar, User, ChevronRight } from 'lucide-react';
+import NotificationList from '@/components/notifications/NotificationList';
 
 interface Barber {
   id: string;
@@ -212,6 +213,7 @@ export default function Home() {
         <div className="mb-8 flex items-center justify-end space-x-4">
           {user ? (
             <>
+              <NotificationList />
               <button
                 onClick={handleProfileClick}
                 className="flex items-center space-x-2 rounded-md bg-primary/10 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/20"
@@ -368,7 +370,7 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen">
+    <main className="min-h-screen">
       <HeroSection />
       
       <div className="container mx-auto px-4 py-12 space-y-16">
@@ -429,6 +431,6 @@ export default function Home() {
           </div>
         </section>
       </div>
-    </div>
+    </main>
   );
 }

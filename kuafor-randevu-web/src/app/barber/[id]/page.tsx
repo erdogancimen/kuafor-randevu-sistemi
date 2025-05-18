@@ -7,8 +7,8 @@ import { db, auth } from '@/config/firebase';
 import Image from 'next/image';
 import { MapPin, Star, Clock, Scissors, Phone, Mail, Calendar, Loader2, Home, Check, X } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import ReviewList from '@/components/ReviewList';
-import FavoriteButton from '@/components/FavoriteButton';
+import ReviewList from '@/components/forms/ReviewList';
+import FavoriteButton from '@/components/common/FavoriteButton';
 import { createNotification } from '@/lib/firebase/notifications';
 
 interface Barber {
@@ -27,8 +27,8 @@ interface Barber {
   }[];
   workingHours?: {
     [key: string]: {
-    start: string;
-    end: string;
+      start: string;
+      end: string;
       isClosed?: boolean;
     };
   };
@@ -229,36 +229,7 @@ export default function BarberDetailPage() {
       });
 
       console.log('Appointment created:', appointmentRef.id);
-
-      try {
-        // Berbere bildirim gönder
-        await createNotification({
-          userId: barber.id,
-          title: 'Yeni Randevu',
-          message: `${userData.firstName} ${userData.lastName} adlı müşteri randevu talebinde bulundu.`,
-          type: 'appointment',
-          read: false,
-          data: { appointmentId: appointmentRef.id }
-        });
-        console.log('Barber notification created');
-
-        // Müşteriye bildirim gönder
-        await createNotification({
-          userId: auth.currentUser.uid,
-          title: 'Randevu Talebi',
-          message: 'Randevu talebiniz berbere iletildi. Onay bekleniyor.',
-          type: 'appointment',
-          read: false,
-          data: { appointmentId: appointmentRef.id }
-        });
-        console.log('Customer notification created');
-      } catch (notificationError) {
-        console.error('Error creating notifications:', notificationError);
-        // Bildirim hatası olsa bile randevu oluşturulduğunu bildir
-        toast.success('Randevunuz oluşturuldu, ancak bildirimler gönderilemedi');
-      }
-
-      toast.success('Randevunuz başarıyla oluşturuldu!');
+      toast.success('Randevu talebiniz başarıyla oluşturuldu');
       router.push('/appointments');
     } catch (error) {
       console.error('Error creating appointment:', error);
@@ -322,19 +293,19 @@ export default function BarberDetailPage() {
         <div className="relative container mx-auto px-4 py-16">
           <div className="flex flex-col md:flex-row items-center gap-8">
             <div className="relative h-32 w-32 md:h-40 md:w-40 rounded-full overflow-hidden bg-white/5 border-4 border-white/10">
-                  <Image
+              <Image
                 src="/images/default-barber.jpg"
-                    alt={`${barber.firstName} ${barber.lastName}`}
-                    fill
+                alt={`${barber.firstName} ${barber.lastName}`}
+                fill
                 sizes="(max-width: 768px) 128px, 160px"
-                    className="object-cover"
-                  />
+                className="object-cover"
+              />
             </div>
             <div className="text-center md:text-left">
               <div className="flex items-center justify-center md:justify-start gap-2">
                 <h1 className="text-3xl md:text-4xl font-bold text-white">
-                {barber.firstName} {barber.lastName}
-              </h1>
+                  {barber.firstName} {barber.lastName}
+                </h1>
                 <FavoriteButton
                   barberId={barber.id}
                   barberName={`${barber.firstName} ${barber.lastName}`}
@@ -371,32 +342,32 @@ export default function BarberDetailPage() {
           <div className="lg:col-span-2 space-y-8">
             <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl shadow-sm p-6 border border-white/10">
               <h2 className="text-2xl font-bold text-white mb-6">Hizmetler</h2>
-            <div className="space-y-4">
-              {barber.services?.map((service, index) => (
-                <div
-                  key={index}
-                  className={`flex items-center justify-between p-4 rounded-lg cursor-pointer transition ${
-                    selectedService === service.name
+              <div className="space-y-4">
+                {barber.services?.map((service, index) => (
+                  <div
+                    key={index}
+                    className={`flex items-center justify-between p-4 rounded-lg cursor-pointer transition ${
+                      selectedService === service.name
                         ? 'bg-primary/20 border-2 border-primary'
                         : 'bg-gray-800/50 border border-white/10 hover:border-primary/50'
-                  }`}
+                    }`}
                     onClick={() => {
                       console.log('Selected Service:', service);
                       setSelectedService(service.name);
                     }}
-                >
-                  <div>
+                  >
+                    <div>
                       <h3 className="font-medium text-white">{service.name}</h3>
                       <div className="flex items-center text-sm text-gray-400 mt-1">
-                      <Clock className="w-4 h-4 mr-1" />
-                      <span>{service.duration} dakika</span>
+                        <Clock className="w-4 h-4 mr-1" />
+                        <span>{service.duration} dakika</span>
+                      </div>
+                    </div>
+                    <div className="text-lg font-semibold text-white">
+                      {service.price} TL
                     </div>
                   </div>
-                    <div className="text-lg font-semibold text-white">
-                    {service.price} TL
-                  </div>
-                </div>
-              ))}
+                ))}
               </div>
             </div>
 
@@ -431,15 +402,15 @@ export default function BarberDetailPage() {
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <Calendar className="h-5 w-5 text-gray-400" />
                   </div>
-                <input
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
+                  <input
+                    type="date"
+                    value={selectedDate}
+                    onChange={(e) => setSelectedDate(e.target.value)}
                     className="w-full pl-10 pr-3 py-2 bg-gray-800/50 border border-white/10 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition text-white"
-                  min={new Date().toISOString().split('T')[0]}
-                  required
-                />
-              </div>
+                    min={new Date().toISOString().split('T')[0]}
+                    required
+                  />
+                </div>
               </div>
 
               {selectedDate && selectedService && (

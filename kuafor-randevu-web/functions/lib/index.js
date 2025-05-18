@@ -64,87 +64,108 @@ exports.sendFCMNotification = functions.https.onCall(async (data, context) => {
 exports.onAppointmentCreated = functions.firestore
     .document('appointments/{appointmentId}')
     .onCreate(async (snap, context) => {
-    var _a, _b;
     const appointmentData = snap.data();
+    if (!appointmentData) {
+        console.error('No data in appointment document');
+        return null;
+    }
     try {
+        // Müşteri bilgilerini al
+        const customerDoc = await admin.firestore().collection('users').doc(appointmentData.userId).get();
+        const customerData = customerDoc.data();
+        const customerName = customerData ? `${customerData.firstName} ${customerData.lastName}` : 'Yeni bir müşteri';
         // Berbere bildirim gönder
-        await admin.messaging().send({
-            token: (_a = (await admin.firestore().collection('users').doc(appointmentData.barberId).get()).data()) === null || _a === void 0 ? void 0 : _a.fcmToken,
-            notification: {
-                title: 'Yeni Randevu',
-                body: `${appointmentData.customerName} adlı müşteri randevu talebinde bulundu.`
-            },
-            data: {
-                appointmentId: context.params.appointmentId
-            }
+        await admin.firestore().collection('notifications').add({
+            userId: appointmentData.barberId,
+            title: 'Yeni Randevu',
+            message: `${customerName} adlı müşteri randevu talebinde bulundu.`,
+            type: 'appointment',
+            read: false,
+            data: { appointmentId: context.params.appointmentId },
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
         // Müşteriye bildirim gönder
-        await admin.messaging().send({
-            token: (_b = (await admin.firestore().collection('users').doc(appointmentData.userId).get()).data()) === null || _b === void 0 ? void 0 : _b.fcmToken,
-            notification: {
-                title: 'Randevu Talebi',
-                body: 'Randevu talebiniz berbere iletildi. Onay bekleniyor.'
-            },
-            data: {
-                appointmentId: context.params.appointmentId
-            }
+        await admin.firestore().collection('notifications').add({
+            userId: appointmentData.userId,
+            title: 'Randevu Talebi',
+            message: 'Randevu talebiniz berbere iletildi. Onay bekleniyor.',
+            type: 'appointment',
+            read: false,
+            data: { appointmentId: context.params.appointmentId },
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
+        return null;
     }
     catch (error) {
         console.error('Error sending notifications:', error);
+        return null;
     }
 });
-// Randevu durumu güncellendiğinde bildirim gönderme
+// Randevu durumu değiştiğinde bildirim gönderme
 exports.onAppointmentStatusUpdated = functions.firestore
     .document('appointments/{appointmentId}')
     .onUpdate(async (change, context) => {
-    var _a, _b;
     const newData = change.after.data();
     const previousData = change.before.data();
-    if (newData.status === previousData.status)
-        return;
+    if (!newData || !previousData) {
+        console.error('No data in appointment document');
+        return null;
+    }
+    // Sadece status değişikliğinde bildirim gönder
+    if (newData.status === previousData.status) {
+        return null;
+    }
     try {
-        if (newData.status === 'approved') {
-            // Berbere bildirim gönder
-            await admin.messaging().send({
-                token: (_a = (await admin.firestore().collection('users').doc(newData.barberId).get()).data()) === null || _a === void 0 ? void 0 : _a.fcmToken,
-                notification: {
-                    title: 'Randevu Onaylandı',
-                    body: `${newData.customerName} adlı müşterinin randevusu onaylandı.`
-                },
-                data: {
-                    appointmentId: context.params.appointmentId
-                }
-            });
-            // Müşteriye bildirim gönder
-            await admin.messaging().send({
-                token: (_b = (await admin.firestore().collection('users').doc(newData.userId).get()).data()) === null || _b === void 0 ? void 0 : _b.fcmToken,
-                notification: {
-                    title: 'Randevu Onaylandı',
-                    body: 'Randevu talebiniz onaylandı.'
-                },
-                data: {
-                    appointmentId: context.params.appointmentId
-                }
-            });
-            // Müşteriye e-posta gönder
-            const transporter = nodemailer.createTransport({
-                service: 'gmail',
-                auth: {
-                    user: process.env.EMAIL_USER,
-                    pass: process.env.EMAIL_PASSWORD
-                }
-            });
-            await transporter.sendMail({
-                from: process.env.EMAIL_USER,
-                to: newData.customerEmail,
-                subject: 'Randevu Onaylandı',
-                text: `Sayın ${newData.customerName},\n\nRandevu talebiniz onaylandı. Randevu detayları:\nTarih: ${newData.date}\nSaat: ${newData.time}\nHizmet: ${newData.service}\n\nİyi günler dileriz.`
-            });
-        }
+        // Müşteri ve berber bilgilerini al
+        const [customerDoc, barberDoc] = await Promise.all([
+            admin.firestore().collection('users').doc(newData.userId).get(),
+            admin.firestore().collection('users').doc(newData.barberId).get()
+        ]);
+        const customerData = customerDoc.data();
+        const barberData = barberDoc.data();
+        const customerName = (customerData === null || customerData === void 0 ? void 0 : customerData.name) || 'Müşteri';
+        const barberName = (barberData === null || barberData === void 0 ? void 0 : barberData.name) || 'Berber';
+        // Müşteriye bildirim gönder
+        await admin.firestore().collection('notifications').add({
+            userId: newData.userId,
+            title: 'Randevu Durumu Güncellendi',
+            message: newData.status === 'confirmed'
+                ? `${barberName} randevunuzu onayladı.`
+                : newData.status === 'rejected'
+                    ? `${barberName} randevunuzu reddetti.`
+                    : newData.status === 'cancelled'
+                        ? `${barberName} randevunuzu iptal etti.`
+                        : `${barberName} randevunuzu tamamlandı olarak işaretledi.`,
+            type: 'appointment',
+            read: false,
+            data: {
+                appointmentId: context.params.appointmentId
+            },
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        // Berbere bildirim gönder
+        await admin.firestore().collection('notifications').add({
+            userId: newData.barberId,
+            title: 'Randevu Durumu Güncellendi',
+            message: newData.status === 'confirmed'
+                ? `${customerName} adlı müşterinin randevusunu onayladınız.`
+                : newData.status === 'rejected'
+                    ? `${customerName} adlı müşterinin randevusunu reddettiniz.`
+                    : newData.status === 'cancelled'
+                        ? `${customerName} adlı müşterinin randevusunu iptal ettiniz.`
+                        : `${customerName} adlı müşterinin randevusunu tamamlandı olarak işaretlediniz.`,
+            type: 'appointment',
+            read: false,
+            data: {
+                appointmentId: context.params.appointmentId
+            },
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        return null;
     }
     catch (error) {
         console.error('Error sending notifications:', error);
+        return null;
     }
 });
 //# sourceMappingURL=index.js.map

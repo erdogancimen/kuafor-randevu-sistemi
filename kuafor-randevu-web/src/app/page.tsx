@@ -210,10 +210,10 @@ export default function Home() {
     <div className="relative overflow-hidden bg-gradient-to-br from-primary/10 via-primary/5 to-background py-20">
       <div className="container mx-auto px-4">
         {/* Üst menü */}
-        <div className="mb-8 flex items-center justify-end space-x-4">
+        <div className="mb-8 flex items-center justify-end space-x-4 relative z-50">
           {user ? (
             <>
-              <NotificationList />
+              <NotificationList userId={user.uid} />
               <button
                 onClick={handleProfileClick}
                 className="flex items-center space-x-2 rounded-md bg-primary/10 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/20"
@@ -295,7 +295,7 @@ export default function Home() {
   const SectionHeader = ({ title, description }: { title: string; description?: string }) => (
     <div className="space-y-2 mb-8">
       <h2 className="text-3xl font-bold tracking-tight">{title}</h2>
-      {description && <p className="text-muted-foreground">{description}</p>}
+      {description && <p className="muted-foreground">{description}</p>}
     </div>
   );
 

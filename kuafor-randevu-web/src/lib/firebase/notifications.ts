@@ -1,23 +1,39 @@
 import { collection, addDoc, query, where, orderBy, getDocs, updateDoc, doc, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { db } from './config';
-import { Notification, NotificationData } from '@/types/notification';
 
-export const createNotification = async (notificationData: NotificationData) => {
+export interface Notification {
+  id: string;
+  userId: string;
+  title: string;
+  message: string;
+  type: 'appointment' | 'review' | 'system';
+  read: boolean;
+  data?: {
+    appointmentId?: string;
+    reviewId?: string;
+  };
+  createdAt: any;
+}
+
+export const createNotification = async ({
+  userId,
+  title,
+  message,
+  type,
+  data,
+  read = false
+}: Omit<Notification, 'id' | 'createdAt'>) => {
   try {
-    console.log('Creating notification:', notificationData);
-
-    if (!notificationData.userId) {
-      throw new Error('User ID is required');
-    }
-
-    const notificationsRef = collection(db, 'notifications');
-    const notificationRef = await addDoc(notificationsRef, {
-      ...notificationData,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
+    const notificationRef = await addDoc(collection(db, 'notifications'), {
+      userId,
+      title,
+      message,
+      type,
+      data,
+      read,
+      createdAt: serverTimestamp()
     });
 
-    console.log('Notification created with ID:', notificationRef.id);
     return notificationRef.id;
   } catch (error) {
     console.error('Error creating notification:', error);
@@ -27,48 +43,29 @@ export const createNotification = async (notificationData: NotificationData) => 
 
 export const getNotifications = async (userId: string) => {
   try {
-    console.log('Getting notifications for user:', userId);
-    
-    if (!userId) {
-      throw new Error('User ID is required');
-    }
-
-    const notificationsRef = collection(db, 'notifications');
-    const q = query(
-      notificationsRef,
+    const notificationsQuery = query(
+      collection(db, 'notifications'),
       where('userId', '==', userId),
       orderBy('createdAt', 'desc')
     );
-    
-    const querySnapshot = await getDocs(q);
-    const notifications = querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
 
-    console.log('Retrieved notifications:', notifications);
-    return notifications;
+    const snapshot = await getDocs(notificationsQuery);
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      createdAt: doc.data().createdAt?.toDate() || new Date()
+    })) as Notification[];
   } catch (error) {
-    console.error('Error getting notifications:', error);
+    console.error('Error fetching notifications:', error);
     throw error;
   }
 };
 
 export const markNotificationAsRead = async (notificationId: string) => {
   try {
-    console.log('Marking notification as read:', notificationId);
-    
-    if (!notificationId) {
-      throw new Error('Notification ID is required');
-    }
-
-    const notificationRef = doc(db, 'notifications', notificationId);
-    await updateDoc(notificationRef, {
-      read: true,
-      updatedAt: serverTimestamp()
+    await updateDoc(doc(db, 'notifications', notificationId), {
+      read: true
     });
-
-    console.log('Notification marked as read');
   } catch (error) {
     console.error('Error marking notification as read:', error);
     throw error;
@@ -77,31 +74,20 @@ export const markNotificationAsRead = async (notificationId: string) => {
 
 export const markAllNotificationsAsRead = async (userId: string) => {
   try {
-    console.log('Marking all notifications as read for user:', userId);
-    
-    if (!userId) {
-      throw new Error('User ID is required');
-    }
-
-    const notificationsRef = collection(db, 'notifications');
-    const q = query(
-      notificationsRef,
+    const notificationsQuery = query(
+      collection(db, 'notifications'),
       where('userId', '==', userId),
       where('read', '==', false)
     );
-    
-    const querySnapshot = await getDocs(q);
+
+    const snapshot = await getDocs(notificationsQuery);
     const batch = writeBatch(db);
-    
-    querySnapshot.docs.forEach(doc => {
-      batch.update(doc.ref, {
-        read: true,
-        updatedAt: serverTimestamp()
-      });
+
+    snapshot.docs.forEach(doc => {
+      batch.update(doc.ref, { read: true });
     });
-    
+
     await batch.commit();
-    console.log('All notifications marked as read');
   } catch (error) {
     console.error('Error marking all notifications as read:', error);
     throw error;

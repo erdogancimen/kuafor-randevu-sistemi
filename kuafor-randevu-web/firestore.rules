@@ -2,68 +2,49 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Kullanıcı kimlik doğrulaması kontrolü
-    function isAuthenticated() {
-      return request.auth != null;
-    }
-
-    // Kullanıcının kendi verilerine erişim kontrolü
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
-    }
-
-    // Kullanıcılar koleksiyonu kuralları
+    // Kullanıcı koleksiyonu için kurallar
     match /users/{userId} {
-      allow read: if true; // Herkes okuyabilir
-      allow create: if isAuthenticated() && request.auth.uid == userId;
-      allow update: if isOwner(userId);
-      allow delete: if false;
+      // Kuaför listesini herkes görebilir
+      allow read: if true;
+      // Kullanıcının kendi belgesini yazma izni
+      allow write: if request.auth != null && request.auth.uid == userId;
+      
+      // Favoriler alt koleksiyonu için kurallar
+      match /favorites/{favoriteId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
     }
-
-    // Randevular koleksiyonu kuralları
+    
+    // Randevular koleksiyonu için kurallar
     match /appointments/{appointmentId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update: if isAuthenticated() && (
-        resource.data.userId == request.auth.uid ||
-        resource.data.barberId == request.auth.uid
-      );
-      allow delete: if false;
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && 
+        (request.auth.uid == resource.data.userId || 
+         request.auth.uid == resource.data.barberId);
     }
-
-    // Favoriler koleksiyonu kuralları
-    match /favorites/{favoriteId} {
-      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
-      allow write: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
-    }
-
-    // Değerlendirmeler koleksiyonu kuralları
+    
+    // Değerlendirmeler koleksiyonu için kurallar
     match /reviews/{reviewId} {
-      allow read: if true; // Herkes okuyabilir
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isAuthenticated() && (
-        resource.data.userId == request.auth.uid || // Değerlendirme sahibi
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' // Admin
-      );
+      allow read: if true;
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && 
+        request.auth.uid == resource.data.userId;
     }
-
-    // Bildirimler koleksiyonu
+    
+    // Bildirimler koleksiyonu için kurallar
     match /notifications/{notificationId} {
-      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
-      allow create: if isAuthenticated();
-      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid;
-      allow delete: if false;
+      allow read: if request.auth != null && 
+        request.auth.uid == resource.data.userId;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null && 
+        request.auth.uid == resource.data.userId;
     }
-
-    // FCM tokenları
-    match /fcmTokens/{tokenId} {
-      allow read, write: if isAuthenticated() && request.auth.uid == tokenId;
-    }
-
-    // Berber profilleri koleksiyonu
-    match /barbers/{barberId} {
-      allow read: if true; // Herkes okuyabilir
-      allow write: if isOwner(barberId);
+    
+    // Diğer koleksiyonlar için varsayılan kurallar
+    match /{document=**} {
+      allow read: if true;
+      allow write: if request.auth != null;
     }
   }
 } 

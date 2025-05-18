@@ -16,49 +16,6 @@ export const createAppointment = async (appointmentData: AppointmentData) => {
     });
 
     console.log('Appointment created with ID:', appointmentRef.id);
-
-    // Kullanıcı ve kuaför bilgilerini al
-    const [userDoc, barberDoc] = await Promise.all([
-      getDoc(doc(db, 'users', appointmentData.userId)),
-      getDoc(doc(db, 'users', appointmentData.barberId))
-    ]);
-
-    if (!userDoc.exists() || !barberDoc.exists()) {
-      throw new Error('Kullanıcı veya kuaför bilgileri bulunamadı');
-    }
-
-    const userData = userDoc.data();
-    const barberData = barberDoc.data();
-
-    // Berbere bildirim gönder
-    await createNotification({
-      userId: appointmentData.barberId,
-      title: 'Yeni Randevu',
-      message: `${userData.firstName} ${userData.lastName} adlı müşteri randevu talebinde bulundu.`,
-      type: 'appointment',
-      read: false,
-      data: { appointmentId: appointmentRef.id }
-    });
-
-    // Müşteriye bildirim gönder
-    await createNotification({
-      userId: appointmentData.userId,
-      title: 'Randevu Talebi',
-      message: 'Randevu talebiniz berbere iletildi. Onay bekleniyor.',
-      type: 'appointment',
-      read: false,
-      data: { appointmentId: appointmentRef.id }
-    });
-
-    // Berbere e-posta gönder
-    if (barberData.email) {
-      await sendEmail({
-        to: barberData.email,
-        subject: 'Yeni Randevu Talebi',
-        text: `Sayın ${barberData.firstName} ${barberData.lastName},\n\n${userData.firstName} ${userData.lastName} adlı müşteri randevu talebinde bulundu.\n\nRandevu Detayları:\nTarih: ${appointmentData.date}\nSaat: ${appointmentData.time}\nHizmet: ${appointmentData.service}\n\nİyi günler dileriz.`
-      });
-    }
-
     return appointmentRef.id;
   } catch (error) {
     console.error('Error creating appointment:', error);

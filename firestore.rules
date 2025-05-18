@@ -1,0 +1,69 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Kullanıcı kimlik doğrulaması kontrolü
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Kullanıcının kendi verilerine erişim kontrolü
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Kullanıcılar koleksiyonu kuralları
+    match /users/{userId} {
+      allow read: if true; // Herkes okuyabilir
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if isOwner(userId);
+      allow delete: if false;
+    }
+
+    // Randevular koleksiyonu kuralları
+    match /appointments/{appointmentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.barberId == request.auth.uid
+      );
+      allow delete: if false;
+    }
+
+    // Favoriler koleksiyonu kuralları
+    match /favorites/{favoriteId} {
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow write: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+    }
+
+    // Değerlendirmeler koleksiyonu kuralları
+    match /reviews/{reviewId} {
+      allow read: if true; // Herkes okuyabilir
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid || // Değerlendirme sahibi
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' // Admin
+      );
+    }
+
+    // Bildirimler koleksiyonu
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow delete: if false;
+    }
+
+    // FCM tokenları
+    match /fcmTokens/{tokenId} {
+      allow read, write: if isAuthenticated() && request.auth.uid == tokenId;
+    }
+
+    // Berber profilleri koleksiyonu
+    match /barbers/{barberId} {
+      allow read: if true; // Herkes okuyabilir
+      allow write: if isOwner(barberId);
+    }
+  }
+} 

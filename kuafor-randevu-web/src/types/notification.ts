@@ -7,14 +7,18 @@ export interface Notification {
   userId: string;
   title: string;
   message: string;
-  type: NotificationType;
+  type: 'appointment' | 'review' | 'system';
   read: boolean;
   data?: {
     appointmentId?: string;
     reviewId?: string;
   };
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
+  createdAt: {
+    toDate: () => Date;
+  };
+  updatedAt: {
+    toDate: () => Date;
+  };
 }
 
 export interface NotificationData {

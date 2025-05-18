@@ -239,7 +239,7 @@ export default function BarberProfile() {
             </button>
             
             {/* Notification Button */}
-            <NotificationList />
+            <NotificationList userId={auth.currentUser?.uid || ''} />
             
             {/* Hamburger Menu Button */}
                 <button

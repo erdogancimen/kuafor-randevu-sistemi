@@ -6,15 +6,20 @@ export interface Appointment {
   id: string;
   userId: string;
   barberId: string;
-  service: string;
+  barberName: string;
+  serviceName: string;
   date: string;
   time: string;
   status: AppointmentStatus;
   price?: number;
   duration?: number;
   notes?: string;
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
+  createdAt: {
+    toDate: () => Date;
+  };
+  updatedAt: {
+    toDate: () => Date;
+  };
 }
 
 export interface AppointmentData {

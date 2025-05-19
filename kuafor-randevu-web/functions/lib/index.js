@@ -70,25 +70,33 @@ exports.onAppointmentCreated = functions.firestore
         return null;
     }
     try {
-        // Müşteri bilgilerini al
-        const customerDoc = await admin.firestore().collection('users').doc(appointmentData.userId).get();
+        // Müşteri ve berber/çalışan bilgilerini al
+        const [customerDoc, barberDoc] = await Promise.all([
+            admin.firestore().collection('users').doc(appointmentData.userId).get(),
+            admin.firestore().collection('users').doc(appointmentData.employeeId || appointmentData.barberId).get()
+        ]);
         const customerData = customerDoc.data();
-        const customerName = customerData ? `${customerData.firstName} ${customerData.lastName}` : 'Yeni bir müşteri';
-        // Berbere bildirim gönder
+        const barberData = barberDoc.data();
+        if (!customerData || !barberData) {
+            throw new Error('Kullanıcı veya berber bilgileri bulunamadı');
+        }
+        const customerName = `${customerData.firstName} ${customerData.lastName}`;
+        const barberName = `${barberData.firstName} ${barberData.lastName}`;
+        // Müşteriye bildirim gönder
         await admin.firestore().collection('notifications').add({
-            userId: appointmentData.barberId,
-            title: 'Yeni Randevu',
-            message: `${customerName} adlı müşteri randevu talebinde bulundu.`,
+            userId: appointmentData.userId,
+            title: 'Randevu Talebi',
+            message: `${barberName} ile randevunuz oluşturuldu.`,
             type: 'appointment',
             read: false,
             data: { appointmentId: context.params.appointmentId },
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
-        // Müşteriye bildirim gönder
+        // Berbere/çalışana bildirim gönder
         await admin.firestore().collection('notifications').add({
-            userId: appointmentData.userId,
-            title: 'Randevu Talebi',
-            message: 'Randevu talebiniz berbere iletildi. Onay bekleniyor.',
+            userId: appointmentData.employeeId || appointmentData.barberId,
+            title: 'Yeni Randevu Talebi',
+            message: `${customerName} adlı müşteri ${appointmentData.date} tarihinde ${appointmentData.time} saatinde ${appointmentData.service} hizmeti için randevu talebinde bulundu.`,
             type: 'appointment',
             read: false,
             data: { appointmentId: context.params.appointmentId },
@@ -116,15 +124,18 @@ exports.onAppointmentStatusUpdated = functions.firestore
         return null;
     }
     try {
-        // Müşteri ve berber bilgilerini al
+        // Müşteri ve berber/çalışan bilgilerini al
         const [customerDoc, barberDoc] = await Promise.all([
             admin.firestore().collection('users').doc(newData.userId).get(),
-            admin.firestore().collection('users').doc(newData.barberId).get()
+            admin.firestore().collection('users').doc(newData.employeeId || newData.barberId).get()
         ]);
         const customerData = customerDoc.data();
         const barberData = barberDoc.data();
-        const customerName = (customerData === null || customerData === void 0 ? void 0 : customerData.name) || 'Müşteri';
-        const barberName = (barberData === null || barberData === void 0 ? void 0 : barberData.name) || 'Berber';
+        if (!customerData || !barberData) {
+            throw new Error('Kullanıcı veya berber bilgileri bulunamadı');
+        }
+        const customerName = `${customerData.firstName} ${customerData.lastName}`;
+        const barberName = `${barberData.firstName} ${barberData.lastName}`;
         // Müşteriye bildirim gönder
         await admin.firestore().collection('notifications').add({
             userId: newData.userId,
@@ -143,9 +154,9 @@ exports.onAppointmentStatusUpdated = functions.firestore
             },
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
-        // Berbere bildirim gönder
+        // Berbere/çalışana bildirim gönder
         await admin.firestore().collection('notifications').add({
-            userId: newData.barberId,
+            userId: newData.employeeId || newData.barberId,
             title: 'Randevu Durumu Güncellendi',
             message: newData.status === 'confirmed'
                 ? `${customerName} adlı müşterinin randevusunu onayladınız.`

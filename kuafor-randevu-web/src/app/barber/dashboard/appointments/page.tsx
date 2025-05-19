@@ -39,6 +39,7 @@ export default function BarberAppointmentsPage() {
         const appointmentsQuery = query(
           collection(db, 'appointments'),
           where('barberId', '==', user.uid),
+          where('employeeId', 'in', [user.uid, null]),
           orderBy('createdAt', 'desc')
         );
 

@@ -7,6 +7,7 @@ import { db, auth } from '@/config/firebase';
 import { Loader2, Check, X, Calendar, Clock, User, Scissors } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import EmployeeNotificationList from '../components/NotificationList';
+import Image from 'next/image';
 
 interface Appointment {
   id: string;
@@ -102,9 +103,10 @@ export default function EmployeeAppointmentsPage() {
 
       // Randevuları tarihe göre sırala
       appointments.sort((a, b) => {
-        const dateA = new Date(a.date + 'T' + a.time);
-        const dateB = new Date(b.date + 'T' + b.time);
-        return dateA.getTime() - dateB.getTime();
+        // createdAt timestamp'lerini karşılaştır
+        const timeA = a.createdAt?.toMillis() || 0;
+        const timeB = b.createdAt?.toMillis() || 0;
+        return timeB - timeA; // En yeni randevular en üstte
       });
 
       setAppointments(appointments);
@@ -145,96 +147,140 @@ export default function EmployeeAppointmentsPage() {
     }
   };
 
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'pending':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'confirmed':
+        return 'bg-green-100 text-green-800';
+      case 'rejected':
+        return 'bg-red-100 text-red-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case 'pending':
+        return 'Beklemede';
+      case 'confirmed':
+        return 'Onaylandı';
+      case 'rejected':
+        return 'Reddedildi';
+      default:
+        return status;
+    }
+  };
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="min-h-screen flex items-center justify-center bg-gray-900">
+        <Loader2 className="h-8 w-8 animate-spin text-white" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="container mx-auto px-4">
+    <div className="min-h-screen bg-gray-900">
+      <div className="container mx-auto px-4 py-8">
         <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Randevularım</h1>
+          <div>
+            <h1 className="text-2xl font-bold text-white">Randevularım</h1>
+            <p className="text-gray-400 mt-1">Tüm randevu isteklerini buradan yönetebilirsiniz</p>
+          </div>
           <EmployeeNotificationList />
         </div>
 
-        <div className="grid gap-6">
-          {appointments.length === 0 ? (
-            <div className="text-center py-12 bg-white rounded-lg shadow">
-              <p className="text-gray-500">Henüz randevu bulunmuyor</p>
+        {appointments.length === 0 ? (
+          <div className="text-center py-12">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-800 mb-4">
+              <Calendar className="h-8 w-8 text-gray-400" />
             </div>
-          ) : (
-            appointments.map((appointment) => (
+            <h2 className="text-xl font-semibold text-white mb-2">Henüz randevu yok</h2>
+            <p className="text-gray-400">Müşteriler randevu oluşturduğunda burada görünecektir</p>
+          </div>
+        ) : (
+          <div className="grid gap-6">
+            {appointments.map((appointment) => (
               <div
                 key={appointment.id}
-                className="bg-white rounded-lg shadow p-6"
+                className="bg-gray-800/50 backdrop-blur-sm rounded-xl shadow-sm p-6 border border-white/10"
               >
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2">
-                      <Calendar className="h-5 w-5 text-gray-400" />
-                      <span className="text-gray-600">{appointment.date}</span>
+                  <div className="flex items-start space-x-4">
+                    <div className="relative h-12 w-12 overflow-hidden rounded-full bg-gray-700">
+                      <Image
+                        src="/images/default-user.jpg"
+                        alt={appointment.customerName || 'Müşteri'}
+                        fill
+                        className="object-cover"
+                      />
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Clock className="h-5 w-5 text-gray-400" />
-                      <span className="text-gray-600">{appointment.time}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <User className="h-5 w-5 text-gray-400" />
-                      <span className="text-gray-600">{appointment.customerName}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Scissors className="h-5 w-5 text-gray-400" />
-                      <span className="text-gray-600">{appointment.service}</span>
+                    <div>
+                      <h3 className="font-semibold text-white">{appointment.customerName}</h3>
+                      <p className="text-sm text-gray-400">{appointment.service}</p>
+                      <div className="mt-2 flex items-center space-x-4 text-sm text-gray-400">
+                        <div className="flex items-center">
+                          <Calendar className="h-4 w-4 mr-1" />
+                          <span>{appointment.date}</span>
+                        </div>
+                        <div className="flex items-center">
+                          <Clock className="h-4 w-4 mr-1" />
+                          <span>{appointment.time}</span>
+                        </div>
+                        <div className="flex items-center">
+                          <span>{appointment.duration} dk</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
-
-                  <div className="flex flex-col gap-2">
-                    {appointment.status === 'pending' ? (
-                      <>
+                  
+                  <div className="flex flex-col items-end space-y-2">
+                    <span className="text-lg font-semibold text-white">
+                      {appointment.price} TL
+                    </span>
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(appointment.status)}`}>
+                      {getStatusText(appointment.status)}
+                    </span>
+                    {appointment.status === 'pending' && (
+                      <div className="flex items-center space-x-2 mt-2">
                         <button
                           onClick={() => handleAppointmentStatus(appointment.id, 'confirmed')}
                           disabled={updating === appointment.id}
-                          className="flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {updating === appointment.id ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
                           ) : (
-                            <Check className="h-4 w-4" />
+                            <>
+                              <Check className="h-4 w-4 mr-1" />
+                              <span>Onayla</span>
+                            </>
                           )}
-                          <span>Onayla</span>
                         </button>
                         <button
                           onClick={() => handleAppointmentStatus(appointment.id, 'rejected')}
                           disabled={updating === appointment.id}
-                          className="flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {updating === appointment.id ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
                           ) : (
-                            <X className="h-4 w-4" />
+                            <>
+                              <X className="h-4 w-4 mr-1" />
+                              <span>Reddet</span>
+                            </>
                           )}
-                          <span>Reddet</span>
                         </button>
-                      </>
-                    ) : (
-                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                        appointment.status === 'confirmed'
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-red-100 text-red-800'
-                      }`}>
-                        {appointment.status === 'confirmed' ? 'Onaylandı' : 'Reddedildi'}
-                      </span>
+                      </div>
                     )}
                   </div>
                 </div>
               </div>
-            ))
-          )}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

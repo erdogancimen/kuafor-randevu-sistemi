@@ -13,52 +13,6 @@ export async function createAppointment(appointmentData: Omit<AppointmentData, '
       updatedAt: serverTimestamp()
     });
 
-    // Randevuyu alan kişinin bilgilerini getir
-    const userRef = doc(db, 'users', appointmentData.userId);
-    const userDoc = await getDoc(userRef);
-    const userData = userDoc.data();
-
-    if (!userData) {
-      throw new Error('Kullanıcı bilgileri bulunamadı');
-    }
-
-    // Randevuyu veren kişinin bilgilerini getir
-    const barberRef = doc(db, 'users', appointmentData.barberId);
-    const barberDoc = await getDoc(barberRef);
-    const barberData = barberDoc.data();
-
-    if (!barberData) {
-      throw new Error('Berber bilgileri bulunamadı');
-    }
-
-    // Müşteriye bildirim gönder
-    await createNotification({
-      userId: appointmentData.userId,
-      title: 'Randevu Talebi',
-      message: `${barberData.firstName} ${barberData.lastName} ile randevunuz oluşturuldu.`,
-      type: 'appointment',
-      data: {
-        appointmentId: appointmentRef.id
-      },
-      read: false,
-      updatedAt: Timestamp.now()
-    });
-
-    // Sadece çalışana bildirim gönder (kuaför sahibine gönderme)
-    if (barberData.role === 'employee') {
-      await createNotification({
-        userId: appointmentData.barberId,
-        title: 'Yeni Randevu Talebi',
-        message: `${userData.firstName} ${userData.lastName} sizinle randevu oluşturdu.`,
-        type: 'appointment',
-        data: {
-          appointmentId: appointmentRef.id
-        },
-        read: false,
-        updatedAt: Timestamp.now()
-      });
-    }
-
     return appointmentRef.id;
   } catch (error) {
     console.error('Error creating appointment:', error);
@@ -141,19 +95,18 @@ export const updateAppointmentStatus = async (appointmentId: string, status: App
 
     console.log('Customer notification created');
 
-    // Sadece çalışana bildirim gönder (kuaför sahibine gönderme)
-    if (barberData.role === 'employee') {
-      await createNotification({
-        userId: barberId,
-        title: 'Randevu Durumu Güncellendi',
-        message: barberMessage,
-        type: 'appointment',
-        read: false,
-        data: { appointmentId },
-        updatedAt: Timestamp.now()
-      });
-      console.log('Employee notification created');
-    }
+    // Sadece çalışana bildirim gönder
+    await createNotification({
+      userId: barberId,
+      title: 'Randevu Durumu Güncellendi',
+      message: barberMessage,
+      type: 'appointment',
+      read: false,
+      data: { appointmentId },
+      updatedAt: Timestamp.now()
+    });
+
+    console.log('Employee notification created');
 
     // E-posta gönder
     if (status === 'confirmed' && userData.email) {
@@ -167,6 +120,39 @@ export const updateAppointmentStatus = async (appointmentId: string, status: App
     return { success: true };
   } catch (error) {
     console.error('Error updating appointment status:', error);
+    throw error;
+  }
+};
+
+export const getAppointments = async (userId: string, role: string) => {
+  try {
+    let appointmentsQuery;
+
+    if (role === 'customer') {
+      // Müşteri için kendi randevularını getir
+      appointmentsQuery = query(
+        collection(db, 'appointments'),
+        where('userId', '==', userId)
+      );
+    } else if (role === 'employee') {
+      // Çalışan için kendi randevularını getir
+      appointmentsQuery = query(
+        collection(db, 'appointments'),
+        where('barberId', '==', userId)
+      );
+    } else {
+      throw new Error('Geçersiz kullanıcı rolü');
+    }
+
+    const querySnapshot = await getDocs(appointmentsQuery);
+    const appointments = querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+
+    return appointments;
+  } catch (error) {
+    console.error('Error getting appointments:', error);
     throw error;
   }
 }; 

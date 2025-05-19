@@ -140,11 +140,11 @@ export default function NotificationList({ userId }: NotificationListProps) {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-96 rounded-lg border bg-popover p-4 shadow-lg z-50">
-          <div className="mb-4 flex items-center justify-between border-b pb-3">
+        <div className="absolute right-0 mt-2 w-96 rounded-lg border bg-gray-800 p-4 shadow-lg z-50">
+          <div className="mb-4 flex items-center justify-between border-b border-gray-700 pb-3">
             <div className="flex items-center space-x-2">
               <Bell className="h-5 w-5 text-primary" />
-              <h3 className="font-semibold text-lg">Bildirimler</h3>
+              <h3 className="font-semibold text-lg text-white">Bildirimler</h3>
               {unreadCount > 0 && (
                 <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
                   {unreadCount} yeni
@@ -167,8 +167,8 @@ export default function NotificationList({ userId }: NotificationListProps) {
             </div>
           ) : notifications.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
-              <Bell className="h-12 w-12 text-muted-foreground/50 mb-2" />
-              <p className="text-sm text-muted-foreground">
+              <Bell className="h-12 w-12 text-gray-400 mb-2" />
+              <p className="text-sm text-gray-400">
                 Henüz bildiriminiz bulunmuyor
               </p>
             </div>
@@ -180,27 +180,27 @@ export default function NotificationList({ userId }: NotificationListProps) {
                   onClick={() => handleNotificationClick(notification)}
                   className={`w-full rounded-lg p-4 text-left transition-all ${
                     notification.read
-                      ? 'hover:bg-accent/50'
-                      : 'bg-primary/5 hover:bg-primary/10'
+                      ? 'hover:bg-gray-700'
+                      : 'bg-primary/10 hover:bg-primary/20'
                   }`}
                 >
                   <div className="flex items-start gap-3">
                     <div className={`mt-1 h-2 w-2 flex-shrink-0 rounded-full ${
-                      notification.read ? 'bg-muted-foreground/50' : 'bg-primary animate-pulse'
+                      notification.read ? 'bg-gray-500' : 'bg-primary animate-pulse'
                     }`} />
                     <div className="flex-1 space-y-1">
                       <div className="flex items-start justify-between gap-2">
-                        <p className="font-medium text-base leading-tight">
+                        <p className="font-medium text-base leading-tight text-white">
                           {notification.title}
                         </p>
-                        <span className="flex-shrink-0 text-xs text-muted-foreground">
+                        <span className="flex-shrink-0 text-xs text-gray-400">
                           {formatDistanceToNow(notification.createdAt, {
                             addSuffix: true,
                             locale: tr
                           })}
                         </span>
                       </div>
-                      <p className="text-sm text-muted-foreground line-clamp-2">
+                      <p className="text-sm text-gray-400 line-clamp-2">
                         {notification.message}
                       </p>
                       {notification.type === 'appointment' && (

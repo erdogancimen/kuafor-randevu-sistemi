@@ -8,7 +8,7 @@ import { updateProfile, signOut } from 'firebase/auth';
 import { User, Calendar, Bell, Edit2, X, Menu, LogOut, Loader2, MapPin, Phone, Mail, Clock, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import Image from 'next/image';
-import NotificationList from '@/components/notifications/NotificationList';
+import NotificationList from '../components/NotificationList';
 
 interface EmployeeProfile {
   firstName: string;
@@ -305,7 +305,7 @@ export default function EmployeeProfile() {
             </button>
             
             {/* Notification Button */}
-            <NotificationList userId={auth.currentUser?.uid || ''} />
+            <NotificationList />
             
             {/* Hamburger Menu Button */}
             <button

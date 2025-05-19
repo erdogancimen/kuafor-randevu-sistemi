@@ -11,14 +11,17 @@ import Image from 'next/image';
 
 interface Appointment {
   id: string;
+  userId: string;
   barberId: string;
+  employeeId: string;
   barberName: string;
+  employeeName: string;
   service: string;
   date: string;
   time: string;
   price: number;
   duration: number;
-  status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
+  status: 'pending' | 'confirmed' | 'cancelled' | 'rejected' | 'completed';
   createdAt: Timestamp;
 }
 
@@ -154,15 +157,14 @@ export default function AppointmentsPage() {
                   <div className="flex items-start space-x-4">
                     <div className="relative h-12 w-12 overflow-hidden rounded-full bg-gray-700">
                       <Image
-                        src="/images/default-barber.jpg"
-                        alt={appointment.barberName}
+                        src="/images/default-user.jpg"
+                        alt={appointment.employeeName || appointment.barberName}
                         fill
-                        sizes="(max-width: 768px) 48px, 48px"
                         className="object-cover"
                       />
                     </div>
                     <div>
-                      <h3 className="font-semibold text-white">{appointment.barberName}</h3>
+                      <h3 className="font-semibold text-white">{appointment.employeeName || appointment.barberName}</h3>
                       <p className="text-sm text-gray-400">{appointment.service}</p>
                       <div className="mt-2 flex items-center space-x-4 text-sm text-gray-400">
                         <div className="flex items-center">

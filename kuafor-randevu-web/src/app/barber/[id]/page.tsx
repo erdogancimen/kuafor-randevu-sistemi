@@ -313,20 +313,6 @@ export default function BarberDetailPage() {
         createdAt: serverTimestamp()
       });
 
-      // Sadece seçilen çalışana bildirim gönder (kuaför sahibi değilse)
-      if (selectedEmployee.id !== barber?.id) {
-        await createNotification({
-          userId: selectedEmployee.id,
-          title: 'Yeni Randevu Talebi',
-          message: `${userData.firstName} ${userData.lastName} adlı müşteri ${selectedDate} tarihinde ${selectedTime} saatinde ${selectedService} hizmeti için randevu talebinde bulundu.`,
-          type: 'appointment',
-          data: {
-            appointmentId: appointmentRef.id
-          },
-          read: false
-        });
-      }
-
       toast.success('Randevu talebiniz başarıyla oluşturuldu');
       router.push('/appointments');
     } catch (error) {

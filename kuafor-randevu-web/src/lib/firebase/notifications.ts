@@ -1,5 +1,6 @@
 import { collection, addDoc, query, where, orderBy, getDocs, updateDoc, doc, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { db } from './config';
+import { Notification } from '@/types/notification';
 
 export interface Notification {
   id: string;
@@ -15,22 +16,11 @@ export interface Notification {
   createdAt: any;
 }
 
-export const createNotification = async ({
-  userId,
-  title,
-  message,
-  type,
-  data,
-  read = false
-}: Omit<Notification, 'id' | 'createdAt'>) => {
+export async function createNotification(notificationData: Omit<Notification, 'id' | 'createdAt'>) {
   try {
     const notificationRef = await addDoc(collection(db, 'notifications'), {
-      userId,
-      title,
-      message,
-      type,
-      data,
-      read,
+      ...notificationData,
+      read: false,
       createdAt: serverTimestamp()
     });
 
@@ -39,7 +29,7 @@ export const createNotification = async ({
     console.error('Error creating notification:', error);
     throw error;
   }
-};
+}
 
 export const getNotifications = async (userId: string) => {
   try {

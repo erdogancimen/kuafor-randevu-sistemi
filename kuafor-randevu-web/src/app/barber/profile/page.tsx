@@ -9,6 +9,7 @@ import { User, Calendar, Bell, Lock, Edit2, X, Check, Menu, LogOut, Loader2, Map
 import { toast } from 'react-hot-toast';
 import Image from 'next/image';
 import NotificationList from '@/components/notifications/NotificationList';
+import Link from 'next/link';
 
 interface BarberProfile {
   name: string;
@@ -205,6 +206,11 @@ export default function BarberProfile() {
       label: 'Ayarlar',
       icon: Settings,
       href: '/barber/settings'
+    },
+    {
+      label: 'Çalışanlar',
+      icon: Users,
+      href: '/barber/employees'
     }
   ];
 

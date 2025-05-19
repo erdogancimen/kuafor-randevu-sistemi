@@ -5,13 +5,25 @@ import { Star } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { createReview } from '@/lib/firebase/reviews';
 import { toast } from 'react-hot-toast';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '@/config/firebase';
+import { Review } from '@/types/review';
 
 interface ReviewFormProps {
+  appointmentId: string;
+  userId: string;
   barberId: string;
+  barberName: string;
   onReviewSubmitted: () => void;
 }
 
-export default function ReviewForm({ barberId, onReviewSubmitted }: ReviewFormProps) {
+export default function ReviewForm({ 
+  appointmentId, 
+  userId, 
+  barberId, 
+  barberName, 
+  onReviewSubmitted 
+}: ReviewFormProps) {
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
   const [hoveredRating, setHoveredRating] = useState(0);
@@ -39,13 +51,27 @@ export default function ReviewForm({ barberId, onReviewSubmitted }: ReviewFormPr
     setSubmitting(true);
 
     try {
-      await createReview({
+      // Kullanıcı bilgilerini getir
+      const userRef = doc(db, 'users', userId);
+      const userDoc = await getDoc(userRef);
+      const userData = userDoc.data();
+
+      if (!userData) {
+        throw new Error('Kullanıcı bilgileri bulunamadı');
+      }
+
+      const reviewData: Omit<Review, 'id' | 'createdAt'> = {
+        appointmentId,
         barberId,
-        userId: user.uid,
+        barberName,
+        userId,
+        userName: `${userData.firstName} ${userData.lastName}`,
         rating,
         comment,
-        userName: `${user.firstName} ${user.lastName}`
-      });
+        updatedAt: new Date().toISOString()
+      };
+
+      await createReview(reviewData);
 
       toast.success('Değerlendirmeniz kaydedildi');
       setRating(0);

@@ -15,6 +15,15 @@ interface Service {
   duration: number;
 }
 
+interface Employee {
+  firstName: string;
+  lastName: string;
+  phone: string;
+  email: string;
+  password: string;
+  workingHours: string;
+}
+
 export default function BarberRegisterPage() {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -26,6 +35,15 @@ export default function BarberRegisterPage() {
   const [barberType, setBarberType] = useState('male');
   const [workingHours, setWorkingHours] = useState('');
   const [services, setServices] = useState<Service[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [newEmployee, setNewEmployee] = useState<Employee>({
+    firstName: '',
+    lastName: '',
+    phone: '',
+    email: '',
+    password: '',
+    workingHours: ''
+  });
   const [newService, setNewService] = useState({ name: '', price: '', duration: '' });
   const [latitude, setLatitude] = useState<number>(0);
   const [longitude, setLongitude] = useState<number>(0);
@@ -62,6 +80,29 @@ export default function BarberRegisterPage() {
     setServices(services.filter((_, i) => i !== index));
   };
 
+  const handleAddEmployee = () => {
+    if (!newEmployee.firstName || !newEmployee.lastName || !newEmployee.phone || 
+        !newEmployee.email || !newEmployee.password || !newEmployee.workingHours) {
+      setError('Lütfen tüm çalışan bilgilerini doldurun');
+      return;
+    }
+
+    setEmployees([...employees, newEmployee]);
+    setNewEmployee({
+      firstName: '',
+      lastName: '',
+      phone: '',
+      email: '',
+      password: '',
+      workingHours: ''
+    });
+    setError('');
+  };
+
+  const handleRemoveEmployee = (index: number) => {
+    setEmployees(employees.filter((_, i) => i !== index));
+  };
+
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -87,6 +128,20 @@ export default function BarberRegisterPage() {
         displayName: `${firstName} ${lastName}`
       });
 
+      // Çalışanlar için hesaplar oluştur
+      const employeeAccounts = await Promise.all(
+        employees.map(async (employee) => {
+          const employeeCredential = await createUserWithEmailAndPassword(auth, employee.email, employee.password);
+          await updateProfile(employeeCredential.user, {
+            displayName: `${employee.firstName} ${employee.lastName}`
+          });
+          return {
+            uid: employeeCredential.user.uid,
+            ...employee
+          };
+        })
+      );
+
       await setDoc(doc(db, 'users', user.uid), {
         firstName,
         lastName,
@@ -101,6 +156,7 @@ export default function BarberRegisterPage() {
         longitude,
         imageUrl,
         rating: 0,
+        employees: employeeAccounts,
         createdAt: new Date().toISOString()
       });
 
@@ -320,6 +376,85 @@ export default function BarberRegisterPage() {
                       Ekle
                     </button>
                   </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">
+                  Çalışanlar
+                </label>
+                <div className="space-y-4">
+                  {employees.map((employee, index) => (
+                    <div key={index} className="flex items-center justify-between bg-gray-800/50 p-3 rounded-lg border border-white/10">
+                      <div>
+                        <span className="font-medium text-white">{employee.firstName} {employee.lastName}</span>
+                        <div className="text-sm text-gray-400">
+                          {employee.phone} - {employee.email}
+                        </div>
+                        <div className="text-sm text-gray-400">
+                          Çalışma Saatleri: {employee.workingHours}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveEmployee(index)}
+                        className="text-red-400 hover:text-red-300"
+                      >
+                        <X className="h-5 w-5" />
+                      </button>
+                    </div>
+                  ))}
+                  <div className="grid grid-cols-2 gap-4">
+                    <input
+                      type="text"
+                      placeholder="Ad"
+                      className="px-4 py-2 bg-gray-800/50 border border-white/10 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition text-white placeholder-gray-500"
+                      value={newEmployee.firstName}
+                      onChange={(e) => setNewEmployee({ ...newEmployee, firstName: e.target.value })}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Soyad"
+                      className="px-4 py-2 bg-gray-800/50 border border-white/10 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition text-white placeholder-gray-500"
+                      value={newEmployee.lastName}
+                      onChange={(e) => setNewEmployee({ ...newEmployee, lastName: e.target.value })}
+                    />
+                    <input
+                      type="tel"
+                      placeholder="Telefon"
+                      className="px-4 py-2 bg-gray-800/50 border border-white/10 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition text-white placeholder-gray-500"
+                      value={newEmployee.phone}
+                      onChange={(e) => setNewEmployee({ ...newEmployee, phone: e.target.value })}
+                    />
+                    <input
+                      type="email"
+                      placeholder="E-posta"
+                      className="px-4 py-2 bg-gray-800/50 border border-white/10 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition text-white placeholder-gray-500"
+                      value={newEmployee.email}
+                      onChange={(e) => setNewEmployee({ ...newEmployee, email: e.target.value })}
+                    />
+                    <input
+                      type="password"
+                      placeholder="Şifre"
+                      className="px-4 py-2 bg-gray-800/50 border border-white/10 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition text-white placeholder-gray-500"
+                      value={newEmployee.password}
+                      onChange={(e) => setNewEmployee({ ...newEmployee, password: e.target.value })}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Çalışma Saatleri (Örn: 09:00-18:00)"
+                      className="px-4 py-2 bg-gray-800/50 border border-white/10 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition text-white placeholder-gray-500"
+                      value={newEmployee.workingHours}
+                      onChange={(e) => setNewEmployee({ ...newEmployee, workingHours: e.target.value })}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddEmployee}
+                    className="w-full px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition"
+                  >
+                    Çalışan Ekle
+                  </button>
                 </div>
               </div>
 

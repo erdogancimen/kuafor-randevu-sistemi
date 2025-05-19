@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { doc, getDoc, collection, addDoc, serverTimestamp, query, where, getDocs, DocumentReference } from 'firebase/firestore';
 import { db, auth } from '@/config/firebase';
 import Image from 'next/image';
-import { MapPin, Star, Clock, Scissors, Phone, Mail, Calendar, Loader2, Home, Check, X } from 'lucide-react';
+import { MapPin, Star, Clock, Scissors, Phone, Mail, Calendar, Loader2, Home, Check, X, Users } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import ReviewList from '@/components/forms/ReviewList';
 import FavoriteButton from '@/components/common/FavoriteButton';
@@ -34,6 +34,24 @@ interface Barber {
   };
 }
 
+interface Employee {
+  id: string;
+  firstName: string;
+  lastName: string;
+  services?: {
+    name: string;
+    price: number;
+    duration: number;
+  }[];
+  workingHours?: {
+    [key: string]: {
+      start: string;
+      end: string;
+      isClosed?: boolean;
+    };
+  };
+}
+
 interface Appointment {
   id: string;
   date: string;
@@ -45,6 +63,8 @@ export default function BarberDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const [barber, setBarber] = useState<Barber | null>(null);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedService, setSelectedService] = useState<string>('');
   const [selectedDate, setSelectedDate] = useState<string>('');
@@ -54,7 +74,7 @@ export default function BarberDetailPage() {
   const [existingAppointments, setExistingAppointments] = useState<Appointment[]>([]);
 
   useEffect(() => {
-    const fetchBarber = async () => {
+    const fetchBarberAndEmployees = async () => {
       if (!params?.id) {
         toast.error('Kuaför ID bulunamadı');
         setLoading(false);
@@ -62,33 +82,109 @@ export default function BarberDetailPage() {
       }
 
       try {
+        // Kuaför bilgilerini getir
         const barberRef = doc(db, 'users', params.id) as DocumentReference;
         const barberDoc = await getDoc(barberRef);
         
         if (barberDoc.exists()) {
-          setBarber({ id: barberDoc.id, ...barberDoc.data() } as Barber);
+          const barberData = { id: barberDoc.id, ...barberDoc.data() } as Barber;
+          console.log('Barber Data:', barberData);
+          setBarber(barberData);
+
+          // Çalışanları getir
+          const employeesQuery = query(
+            collection(db, 'users'),
+            where('barberId', '==', params.id),
+            where('role', '==', 'employee')
+          );
+          const employeesSnapshot = await getDocs(employeesQuery);
+          
+          // Her çalışanın hizmetlerini getir
+          const employeesData = await Promise.all(
+            employeesSnapshot.docs.map(async (doc) => {
+              const employeeData = doc.data();
+              console.log('Employee Raw Data:', employeeData);
+              
+              // Çalışanın hizmetlerini getir
+              const servicesQuery = query(
+                collection(db, 'services'),
+                where('employeeId', '==', doc.id)
+              );
+              const servicesSnapshot = await getDocs(servicesQuery);
+              const services = servicesSnapshot.docs.map(serviceDoc => ({
+                ...serviceDoc.data()
+              }));
+
+              // Çalışma saatlerini doğru formata dönüştür
+              let workingHours = {};
+              if (typeof employeeData.workingHours === 'string') {
+                const [start, end] = employeeData.workingHours.split('-');
+                workingHours = {
+                  'Pazartesi': { start, end, isClosed: false },
+                  'Salı': { start, end, isClosed: false },
+                  'Çarşamba': { start, end, isClosed: false },
+                  'Perşembe': { start, end, isClosed: false },
+                  'Cuma': { start, end, isClosed: false },
+                  'Cumartesi': { start, end, isClosed: false },
+                  'Pazar': { start: '00:00', end: '00:00', isClosed: true }
+                };
+              } else {
+                workingHours = employeeData.workingHours || {};
+              }
+
+              const employee = {
+                id: doc.id,
+                ...employeeData,
+                services: services,
+                workingHours: workingHours
+              } as Employee;
+
+              console.log('Processed Employee Data:', employee);
+              return employee;
+            })
+          );
+
+          // Kuaför sahibini de çalışanlar listesine ekle
+          const allEmployees = [
+            {
+              id: barberData.id,
+              firstName: barberData.firstName,
+              lastName: barberData.lastName,
+              services: barberData.services,
+              workingHours: barberData.workingHours || {}
+            },
+            ...employeesData
+          ];
+
+          console.log('All Employees:', allEmployees);
+          setEmployees(allEmployees);
+          
+          // İlk çalışanı (kuaför sahibini) seç
+          if (allEmployees.length > 0) {
+            setSelectedEmployee(allEmployees[0]);
+          }
         } else {
           toast.error('Kuaför bulunamadı');
         }
       } catch (error) {
-        console.error('Error fetching barber:', error);
-        toast.error('Kuaför bilgileri yüklenirken bir hata oluştu');
+        console.error('Error fetching data:', error);
+        toast.error('Bilgiler yüklenirken bir hata oluştu');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchBarber();
+    fetchBarberAndEmployees();
   }, [params?.id]);
 
   useEffect(() => {
     const fetchAppointments = async () => {
-      if (!selectedDate || !barber) return;
+      if (!selectedDate || !selectedEmployee) return;
 
       try {
         const appointmentsQuery = query(
           collection(db, 'appointments'),
-          where('barberId', '==', barber.id),
+          where('employeeId', '==', selectedEmployee.id),
           where('date', '==', selectedDate),
           where('status', 'in', ['pending', 'confirmed'])
         );
@@ -107,28 +203,18 @@ export default function BarberDetailPage() {
     };
 
     fetchAppointments();
-  }, [selectedDate, barber]);
+  }, [selectedDate, selectedEmployee]);
 
   useEffect(() => {
-    if (!selectedDate || !barber || !selectedService) return;
+    if (!selectedDate || !selectedEmployee || !selectedService) return;
 
-    console.log('Selected Date:', selectedDate);
-    console.log('Selected Service:', selectedService);
-    console.log('Barber:', barber);
-    console.log('Working Hours:', barber.workingHours);
-
-    const selectedServiceData = barber.services?.find(s => s.name === selectedService);
-    console.log('Selected Service Data:', selectedServiceData);
-
-    if (!selectedServiceData || !selectedServiceData.duration) {
-      console.log('No service data or duration');
-      return;
-    }
+    const selectedServiceData = selectedEmployee.services?.find(s => s.name === selectedService);
+    if (!selectedServiceData || !selectedServiceData.duration) return;
 
     const dayOfWeek = new Date(selectedDate).toLocaleDateString('tr-TR', { weekday: 'long' });
-    console.log('Day of Week:', dayOfWeek);
-    
-    const workingHours = barber.workingHours?.[dayOfWeek];
+    console.log('Selected Day:', dayOfWeek);
+    console.log('Selected Employee Working Hours:', selectedEmployee.workingHours);
+    const workingHours = selectedEmployee.workingHours?.[dayOfWeek];
     console.log('Working Hours for Day:', workingHours);
 
     if (!workingHours || workingHours.isClosed) {
@@ -153,16 +239,15 @@ export default function BarberDetailPage() {
       const minute = time % 60;
       const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
 
-      // Check if this time slot overlaps with any existing appointment
       const isAvailable = !existingAppointments.some(appointment => {
         const [appHour, appMinute] = appointment.time.split(':').map(Number);
         const appStartTime = appHour * 60 + appMinute;
         const appEndTime = appStartTime + appointment.duration;
         const slotEndTime = time + duration;
 
-        return (time >= appStartTime && time < appEndTime) || // Slot starts during an appointment
-               (slotEndTime > appStartTime && slotEndTime <= appEndTime) || // Slot ends during an appointment
-               (time <= appStartTime && slotEndTime >= appEndTime); // Slot completely contains an appointment
+        return (time >= appStartTime && time < appEndTime) ||
+               (slotEndTime > appStartTime && slotEndTime <= appEndTime) ||
+               (time <= appStartTime && slotEndTime >= appEndTime);
       });
 
       if (isAvailable) {
@@ -172,7 +257,7 @@ export default function BarberDetailPage() {
 
     console.log('Available Slots:', slots);
     setAvailableSlots(slots);
-  }, [selectedDate, selectedService, barber, existingAppointments]);
+  }, [selectedDate, selectedService, selectedEmployee, existingAppointments]);
 
   const handleBooking = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -183,16 +268,15 @@ export default function BarberDetailPage() {
       return;
     }
 
-    if (!barber?.id) {
-      toast.error('Kuaför bilgileri eksik');
+    if (!selectedEmployee?.id) {
+      toast.error('Lütfen bir çalışan seçin');
       return;
     }
 
     try {
       setBookingLoading(true);
 
-      // Kullanıcı bilgilerini al
-      const userRef = doc(db, 'users', auth.currentUser.uid) as DocumentReference;
+      const userRef = doc(db, 'users', auth.currentUser.uid);
       const userDoc = await getDoc(userRef);
       
       if (!userDoc.exists()) {
@@ -202,23 +286,24 @@ export default function BarberDetailPage() {
 
       const userData = userDoc.data();
       
-      if (userData?.role === 'barber') {
-        toast.error('Kuaförler randevu oluşturamaz');
+      if (userData?.role === 'barber' || userData?.role === 'employee') {
+        toast.error('Kuaförler ve çalışanlar randevu oluşturamaz');
         return;
       }
 
-      const selectedServiceData = barber.services?.find(s => s.name === selectedService);
+      const selectedServiceData = selectedEmployee.services?.find(s => s.name === selectedService);
       if (!selectedServiceData) {
         toast.error('Hizmet bilgileri bulunamadı');
         return;
       }
       
-      // Randevuyu oluştur
       const appointmentsRef = collection(db, 'appointments');
       const appointmentRef = await addDoc(appointmentsRef, {
         userId: auth.currentUser.uid,
-        barberId: barber.id,
-        barberName: `${barber.firstName} ${barber.lastName}`,
+        barberId: barber?.id,
+        employeeId: selectedEmployee.id,
+        barberName: `${barber?.firstName} ${barber?.lastName}`,
+        employeeName: `${selectedEmployee.firstName} ${selectedEmployee.lastName}`,
         service: selectedService,
         date: selectedDate,
         time: selectedTime,
@@ -228,7 +313,20 @@ export default function BarberDetailPage() {
         createdAt: serverTimestamp()
       });
 
-      console.log('Appointment created:', appointmentRef.id);
+      // Sadece seçilen çalışana bildirim gönder (kuaför sahibi değilse)
+      if (selectedEmployee.id !== barber?.id) {
+        await createNotification({
+          userId: selectedEmployee.id,
+          title: 'Yeni Randevu Talebi',
+          message: `${userData.firstName} ${userData.lastName} adlı müşteri ${selectedDate} tarihinde ${selectedTime} saatinde ${selectedService} hizmeti için randevu talebinde bulundu.`,
+          type: 'appointment',
+          data: {
+            appointmentId: appointmentRef.id
+          },
+          read: false
+        });
+      }
+
       toast.success('Randevu talebiniz başarıyla oluşturuldu');
       router.push('/appointments');
     } catch (error) {
@@ -340,54 +438,83 @@ export default function BarberDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Services */}
           <div className="lg:col-span-2 space-y-8">
+            {/* Çalışan Seçimi */}
             <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl shadow-sm p-6 border border-white/10">
-              <h2 className="text-2xl font-bold text-white mb-6">Hizmetler</h2>
-              <div className="space-y-4">
-                {barber.services?.map((service, index) => (
-                  <div
-                    key={index}
-                    className={`flex items-center justify-between p-4 rounded-lg cursor-pointer transition ${
-                      selectedService === service.name
-                        ? 'bg-primary/20 border-2 border-primary'
-                        : 'bg-gray-800/50 border border-white/10 hover:border-primary/50'
-                    }`}
-                    onClick={() => {
-                      console.log('Selected Service:', service);
-                      setSelectedService(service.name);
-                    }}
-                  >
-                    <div>
-                      <h3 className="font-medium text-white">{service.name}</h3>
-                      <div className="flex items-center text-sm text-gray-400 mt-1">
-                        <Clock className="w-4 h-4 mr-1" />
-                        <span>{service.duration} dakika</span>
-                      </div>
-                    </div>
-                    <div className="text-lg font-semibold text-white">
-                      {service.price} TL
-                    </div>
-                  </div>
-                ))}
+              <h2 className="text-2xl font-bold text-white mb-6">Çalışan Seçimi</h2>
+              <div className="relative">
+                <select
+                  value={selectedEmployee?.id || ''}
+                  onChange={(e) => {
+                    const employee = employees.find(emp => emp.id === e.target.value);
+                    setSelectedEmployee(employee || null);
+                    setSelectedService('');
+                    setSelectedTime('');
+                  }}
+                  className="w-full bg-gray-800 border border-white/10 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-primary focus:border-transparent"
+                >
+                  {employees.map((employee) => (
+                    <option key={employee.id} value={employee.id}>
+                      {employee.firstName} {employee.lastName} {employee.id === barber?.id ? '(Kuaför Sahibi)' : ''}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 
-            {/* Çalışma Saatleri */}
-            <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl shadow-sm p-6 border border-white/10">
-              <h2 className="text-2xl font-bold text-white mb-6">Çalışma Saatleri</h2>
-              <div className="space-y-4">
-                {Object.entries(defaultWorkingHours).map(([day, defaultHours]) => {
-                  const hours = barber?.workingHours?.[day] || defaultHours;
-                  return (
-                    <div key={day} className="flex items-center justify-between bg-gray-800/50 p-3 rounded-lg border border-white/10">
-                      <span className="font-medium text-white">{day}</span>
-                      <span className="text-gray-400">
-                        {hours.isClosed ? 'Kapalı' : `${hours.start} - ${hours.end}`}
-                      </span>
-                    </div>
-                  );
-                })}
+            {/* Services */}
+            {selectedEmployee && (
+              <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl shadow-sm p-6 border border-white/10">
+                <h2 className="text-2xl font-bold text-white mb-6">Hizmetler</h2>
+                <div className="space-y-4">
+                  {selectedEmployee.services && selectedEmployee.services.length > 0 ? (
+                    selectedEmployee.services.map((service, index) => (
+                      <div
+                        key={index}
+                        className={`flex items-center justify-between p-4 rounded-lg cursor-pointer transition ${
+                          selectedService === service.name
+                            ? 'bg-primary/20 border-2 border-primary'
+                            : 'bg-gray-800/50 border border-white/10 hover:border-primary/50'
+                        }`}
+                        onClick={() => setSelectedService(service.name)}
+                      >
+                        <div>
+                          <h3 className="font-medium text-white">{service.name}</h3>
+                          <div className="flex items-center text-sm text-gray-400 mt-1">
+                            <Clock className="w-4 h-4 mr-1" />
+                            <span>{service.duration} dakika</span>
+                          </div>
+                        </div>
+                        <div className="text-lg font-semibold text-white">
+                          {service.price} TL
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-center text-gray-400">Bu çalışan için henüz hizmet eklenmemiş</p>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* Çalışma Saatleri */}
+            {selectedEmployee && (
+              <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl shadow-sm p-6 border border-white/10">
+                <h2 className="text-2xl font-bold text-white mb-6">Çalışma Saatleri</h2>
+                <div className="space-y-4">
+                  {Object.entries(defaultWorkingHours).map(([day, defaultHours]) => {
+                    const hours = selectedEmployee.workingHours?.[day] || defaultHours;
+                    return (
+                      <div key={day} className="flex items-center justify-between bg-gray-800/50 p-3 rounded-lg border border-white/10">
+                        <span className="font-medium text-white">{day}</span>
+                        <span className="text-gray-400">
+                          {hours.isClosed ? 'Kapalı' : `${hours.start} - ${hours.end}`}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Booking Form */}
@@ -436,9 +563,11 @@ export default function BarberDetailPage() {
                       ))
                     ) : (
                       <div className="col-span-3 text-center py-4 text-gray-400">
-                        {!barber.workingHours?.[new Date(selectedDate).toLocaleDateString('tr-TR', { weekday: 'long' })]?.isClosed
-                          ? 'Bu tarihte müsait saat bulunmamaktadır'
-                          : 'Bu gün kapalıdır'}
+                        {(() => {
+                          const dayOfWeek = new Date(selectedDate).toLocaleDateString('tr-TR', { weekday: 'long' });
+                          const isClosed = selectedEmployee?.workingHours?.[dayOfWeek]?.isClosed ?? true;
+                          return isClosed ? 'Bu gün kapalıdır' : 'Bu tarihte müsait saat bulunmamaktadır';
+                        })()}
                       </div>
                     )}
                   </div>
@@ -447,7 +576,7 @@ export default function BarberDetailPage() {
 
               <button
                 type="submit"
-                disabled={!selectedService || !selectedDate || !selectedTime || bookingLoading}
+                disabled={!selectedEmployee || !selectedService || !selectedDate || !selectedTime || bookingLoading}
                 className="w-full flex justify-center items-center space-x-2 py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-primary hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {bookingLoading ? (
@@ -466,7 +595,7 @@ export default function BarberDetailPage() {
         {/* Değerlendirmeler */}
         <div className="mt-8">
           <h2 className="text-xl font-semibold mb-4">Değerlendirmeler</h2>
-          <ReviewList barberId={barber.id} />
+          <ReviewList barberId={barber?.id || ''} />
         </div>
       </div>
     </div>

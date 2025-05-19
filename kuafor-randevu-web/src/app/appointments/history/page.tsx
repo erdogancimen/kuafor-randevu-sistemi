@@ -3,19 +3,27 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { auth, db } from '@/config/firebase';
-import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, doc, getDoc, DocumentData } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { format } from 'date-fns';
 import { tr } from 'date-fns/locale';
 import { Appointment } from '@/types/appointment';
-import { Review } from '@/types/review';
-import ReviewForm from '@/components/ReviewForm';
+import ReviewForm from '@/components/forms/ReviewForm';
 import { Star } from 'lucide-react';
 
+interface UserData {
+  firstName: string;
+  lastName: string;
+}
+
+interface AppointmentWithUser extends Appointment {
+  userName: string;
+}
+
 export default function AppointmentHistory() {
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [appointments, setAppointments] = useState<AppointmentWithUser[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
+  const [selectedAppointment, setSelectedAppointment] = useState<AppointmentWithUser | null>(null);
   const [showReviewForm, setShowReviewForm] = useState(false);
   const router = useRouter();
 
@@ -35,10 +43,22 @@ export default function AppointmentHistory() {
         );
 
         const querySnapshot = await getDocs(q);
-        const appointmentsData = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as Appointment[];
+        const appointmentsData = await Promise.all(
+          querySnapshot.docs.map(async (docSnapshot) => {
+            const appointmentData = docSnapshot.data() as Appointment;
+            
+            // Kullanıcı bilgilerini getir
+            const userRef = doc(db, 'users', appointmentData.userId);
+            const userDoc = await getDoc(userRef);
+            const userData = userDoc.data() as UserData | undefined;
+
+            return {
+              ...appointmentData,
+              id: docSnapshot.id,
+              userName: userData ? `${userData.firstName} ${userData.lastName}` : 'Bilinmeyen Kullanıcı'
+            } as AppointmentWithUser;
+          })
+        );
 
         setAppointments(appointmentsData);
       } catch (error) {
@@ -81,7 +101,7 @@ export default function AppointmentHistory() {
     }
   };
 
-  const handleReviewClick = (appointment: Appointment) => {
+  const handleReviewClick = (appointment: AppointmentWithUser) => {
     setSelectedAppointment(appointment);
     setShowReviewForm(true);
   };
@@ -162,7 +182,6 @@ export default function AppointmentHistory() {
               <ReviewForm
                 appointmentId={selectedAppointment.id}
                 userId={selectedAppointment.userId}
-                userName={selectedAppointment.userName}
                 barberId={selectedAppointment.barberId}
                 barberName={selectedAppointment.barberName}
                 onReviewSubmitted={handleReviewSubmitted}

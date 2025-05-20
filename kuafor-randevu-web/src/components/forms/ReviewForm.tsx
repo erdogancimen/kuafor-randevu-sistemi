@@ -3,92 +3,89 @@
 import { useState } from 'react';
 import { Star } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import { createReview } from '@/lib/firebase/reviews';
 import { toast } from 'react-hot-toast';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, addDoc, collection, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { db } from '@/config/firebase';
-import { Review } from '@/types/review';
 
 interface ReviewFormProps {
-  appointmentId: string;
-  userId: string;
   barberId: string;
-  barberName: string;
+  appointmentId: string;
   onReviewSubmitted: () => void;
 }
 
-export default function ReviewForm({ 
-  appointmentId, 
-  userId, 
-  barberId, 
-  barberName, 
-  onReviewSubmitted 
-}: ReviewFormProps) {
+export default function ReviewForm({ barberId, appointmentId, onReviewSubmitted }: ReviewFormProps) {
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
-  const [hoveredRating, setHoveredRating] = useState(0);
-  const [submitting, setSubmitting] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { user } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
+    
     if (!user) {
-      toast.error('Değerlendirme yapmak için giriş yapmalısınız');
+      toast.error('Lütfen önce giriş yapın');
       return;
     }
 
     if (rating === 0) {
-      toast.error('Lütfen bir puan verin');
+      toast.error('Lütfen bir puan seçin');
       return;
     }
-
-    if (!comment.trim()) {
-      toast.error('Lütfen bir yorum yazın');
-      return;
-    }
-
-    setSubmitting(true);
 
     try {
-      // Kullanıcı bilgilerini getir
-      const userRef = doc(db, 'users', userId);
-      const userDoc = await getDoc(userRef);
-      const userData = userDoc.data();
+      setIsSubmitting(true);
 
-      if (!userData) {
-        throw new Error('Kullanıcı bilgileri bulunamadı');
-      }
-
-      const reviewData: Omit<Review, 'id' | 'createdAt'> = {
-        appointmentId,
+      // 1. Değerlendirmeyi kaydet
+      const reviewData = {
+        userId: user.uid,
         barberId,
-        barberName,
-        userId,
-        userName: `${userData.firstName} ${userData.lastName}`,
+        appointmentId,
         rating,
         comment,
-        updatedAt: new Date().toISOString()
+        createdAt: serverTimestamp()
       };
 
-      await createReview(reviewData);
+      const reviewRef = await addDoc(collection(db, 'reviews'), reviewData);
 
-      toast.success('Değerlendirmeniz kaydedildi');
+      // 2. Randevuyu değerlendirildi olarak işaretle
+      await updateDoc(doc(db, 'appointments', appointmentId), {
+        isReviewed: true
+      });
+
+      // 3. Kuaföre bildirim gönder
+      const notificationData = {
+        userId: barberId,
+        type: 'review',
+        title: 'Yeni Değerlendirme',
+        message: `${rating} yıldızlı yeni bir değerlendirme aldınız`,
+        isRead: false,
+        createdAt: serverTimestamp(),
+        data: {
+          reviewId: reviewRef.id,
+          appointmentId,
+          rating,
+          comment
+        }
+      };
+
+      await addDoc(collection(db, 'notifications'), notificationData);
+
+      toast.success('Değerlendirmeniz başarıyla kaydedildi');
       setRating(0);
       setComment('');
       onReviewSubmitted();
     } catch (error) {
       console.error('Error submitting review:', error);
-      toast.error('Değerlendirme kaydedilirken bir hata oluştu');
+      toast.error('Değerlendirme gönderilirken bir hata oluştu');
     } finally {
-      setSubmitting(false);
+      setIsSubmitting(false);
     }
   };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-sm font-medium text-gray-300 mb-2">
           Puanınız
         </label>
         <div className="flex space-x-1">
@@ -97,15 +94,11 @@ export default function ReviewForm({
               key={star}
               type="button"
               onClick={() => setRating(star)}
-              onMouseEnter={() => setHoveredRating(star)}
-              onMouseLeave={() => setHoveredRating(0)}
               className="focus:outline-none"
             >
               <Star
-                className={`h-8 w-8 ${
-                  star <= (hoveredRating || rating)
-                    ? 'text-yellow-400 fill-current'
-                    : 'text-gray-300'
+                className={`w-8 h-8 ${
+                  star <= rating ? 'text-yellow-400 fill-yellow-400' : 'text-gray-400'
                 }`}
               />
             </button>
@@ -114,25 +107,24 @@ export default function ReviewForm({
       </div>
 
       <div>
-        <label htmlFor="comment" className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-sm font-medium text-gray-300 mb-2">
           Yorumunuz
         </label>
         <textarea
-          id="comment"
-          rows={4}
           value={comment}
           onChange={(e) => setComment(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-primary focus:border-primary"
+          className="w-full px-3 py-2 bg-gray-800/50 border border-white/10 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-white"
+          rows={4}
           placeholder="Deneyiminizi paylaşın..."
         />
       </div>
 
       <button
         type="submit"
-        disabled={submitting}
-        className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
+        disabled={isSubmitting}
+        className="w-full flex justify-center items-center space-x-2 py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-primary hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        {submitting ? 'Gönderiliyor...' : 'Değerlendirme Yap'}
+        {isSubmitting ? 'Gönderiliyor...' : 'Değerlendirmeyi Gönder'}
       </button>
     </form>
   );

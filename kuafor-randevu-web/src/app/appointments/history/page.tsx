@@ -18,6 +18,7 @@ interface UserData {
 
 interface AppointmentWithUser extends Appointment {
   userName: string;
+  isReviewed?: boolean;
 }
 
 export default function AppointmentHistory() {
@@ -52,10 +53,20 @@ export default function AppointmentHistory() {
             const userDoc = await getDoc(userRef);
             const userData = userDoc.data() as UserData | undefined;
 
+            // Değerlendirme durumunu kontrol et
+            const reviewsRef = collection(db, 'reviews');
+            const reviewsQuery = query(
+              reviewsRef,
+              where('appointmentId', '==', docSnapshot.id)
+            );
+            const reviewsSnapshot = await getDocs(reviewsQuery);
+            const isReviewed = !reviewsSnapshot.empty;
+
             return {
               ...appointmentData,
               id: docSnapshot.id,
-              userName: userData ? `${userData.firstName} ${userData.lastName}` : 'Bilinmeyen Kullanıcı'
+              userName: userData ? `${userData.firstName} ${userData.lastName}` : 'Bilinmeyen Kullanıcı',
+              isReviewed
             } as AppointmentWithUser;
           })
         );
@@ -151,12 +162,13 @@ export default function AppointmentHistory() {
                     <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(appointment.status)}`}>
                       {getStatusText(appointment.status)}
                     </span>
-                    {appointment.status === 'completed' && (
+                    {appointment.status === 'completed' && !appointment.isReviewed && (
                       <button
-                        onClick={() => handleReviewClick(appointment)}
-                        className="text-sm text-primary hover:underline"
+                        onClick={() => router.push(`/review/${appointment.id}`)}
+                        className="flex items-center space-x-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition"
                       >
-                        Değerlendir
+                        <Star className="w-4 h-4" />
+                        <span>Değerlendir</span>
                       </button>
                     )}
                   </div>
@@ -180,10 +192,8 @@ export default function AppointmentHistory() {
                 </button>
               </div>
               <ReviewForm
-                appointmentId={selectedAppointment.id}
-                userId={selectedAppointment.userId}
                 barberId={selectedAppointment.barberId}
-                barberName={selectedAppointment.barberName}
+                appointmentId={selectedAppointment.id}
                 onReviewSubmitted={handleReviewSubmitted}
               />
             </div>

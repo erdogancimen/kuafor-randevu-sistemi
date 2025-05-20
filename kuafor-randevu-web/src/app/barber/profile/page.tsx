@@ -5,11 +5,12 @@ import { useRouter } from 'next/navigation';
 import { auth, db } from '@/config/firebase';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { updateProfile, updatePassword, EmailAuthProvider, reauthenticateWithCredential, onAuthStateChanged, signOut } from 'firebase/auth';
-import { User, Calendar, Bell, Lock, Edit2, X, Check, Menu, LogOut, Loader2, MapPin, Phone, Mail, Clock, Scissors, Users, Settings } from 'lucide-react';
+import { User, Calendar, Bell, Lock, Edit2, X, Check, Menu, LogOut, Loader2, MapPin, Phone, Mail, Clock, Scissors, Users, Settings, Star } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import Image from 'next/image';
 import NotificationList from '@/components/notifications/NotificationList';
 import Link from 'next/link';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 
 interface BarberProfile {
   name: string;
@@ -33,6 +34,22 @@ interface Service {
   duration: number;
 }
 
+interface Appointment {
+  id: string;
+  userId: string;
+  barberId: string;
+  employeeId: string;
+  barberName: string;
+  employeeName: string;
+  service: string;
+  date: string;
+  time: string;
+  price: number;
+  duration: number;
+  status: 'pending' | 'confirmed' | 'cancelled' | 'rejected' | 'completed';
+  createdAt: any;
+}
+
 export default function BarberProfile() {
   const [profile, setProfile] = useState<BarberProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -45,8 +62,10 @@ export default function BarberProfile() {
     duration: 30
   });
   const [editedProfile, setEditedProfile] = useState<Partial<BarberProfile>>({});
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
   const router = useRouter();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 
   // Varsayılan çalışma saatleri
   const defaultWorkingHours = {
@@ -60,11 +79,32 @@ export default function BarberProfile() {
   };
 
   useEffect(() => {
+    const fetchAppointments = async (barberId: string) => {
+      try {
+        const appointmentsQuery = query(
+          collection(db, 'appointments'),
+          where('barberId', '==', barberId),
+          where('date', '==', selectedDate),
+          where('status', 'in', ['pending', 'confirmed'])
+        );
+
+        const querySnapshot = await getDocs(appointmentsQuery);
+        const appointmentsData = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as Appointment[];
+        setAppointments(appointmentsData);
+      } catch (error) {
+        console.error('Error fetching appointments:', error);
+        toast.error('Randevular yüklenirken bir hata oluştu');
+      }
+    };
+
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (!user) {
-          router.push('/login');
-          return;
-        }
+        router.push('/login');
+        return;
+      }
 
       try {
         const docRef = doc(db, 'users', user.uid);
@@ -91,6 +131,9 @@ export default function BarberProfile() {
             photoURL: userData.photoURL || user.photoURL || '/images/default-barber.jpg'
           };
           setProfile(defaultProfile);
+
+          // Randevuları getir
+          await fetchAppointments(user.uid);
         } else {
           router.push('/');
         }
@@ -103,7 +146,7 @@ export default function BarberProfile() {
     });
 
     return () => unsubscribe();
-  }, [router]);
+  }, [router, selectedDate]);
 
   const handleSignOut = async () => {
     try {
@@ -203,6 +246,11 @@ export default function BarberProfile() {
       href: '/barber/dashboard/appointments'
     },
     {
+      label: 'Değerlendirmeler',
+      icon: Star,
+      href: '/barber/reviews'
+    },
+    {
       label: 'Ayarlar',
       icon: Settings,
       href: '/barber/settings'
@@ -232,7 +280,7 @@ export default function BarberProfile() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="container py-8">
+      <div className="container max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
         <div className="mb-6 flex items-center justify-between">
           <h1 className="text-2xl font-bold">Berber Profili</h1>
           <div className="flex items-center space-x-4">
@@ -248,7 +296,7 @@ export default function BarberProfile() {
             <NotificationList userId={auth.currentUser?.uid || ''} />
             
             {/* Hamburger Menu Button */}
-                <button
+            <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
               className="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white"
             >
@@ -257,7 +305,7 @@ export default function BarberProfile() {
               ) : (
                 <Menu className="h-6 w-6" />
               )}
-                </button>
+            </button>
           </div>
         </div>
 
@@ -273,13 +321,12 @@ export default function BarberProfile() {
                     setIsMenuOpen(false);
                   }}
                   className="w-full flex items-center px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
-                  role="menuitem"
                 >
                   <item.icon className="h-4 w-4 mr-2" />
                   {item.label}
                 </button>
               ))}
-              </div>
+            </div>
           </div>
         )}
 
@@ -673,67 +720,67 @@ export default function BarberProfile() {
 
             {/* Randevular */}
             <div className="rounded-lg border bg-card p-6">
-              <div className="mb-6 flex items-center justify-between">
+              <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <h3 className="flex items-center text-lg font-semibold">
                   <Calendar className="mr-2 h-5 w-5" />
-                  Bugünkü Randevular
+                  Randevular
                 </h3>
-                <button className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
-                  Tümünü Gör
-                </button>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                  <div className="relative w-full sm:w-auto">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <Calendar className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                    <input
+                      type="date"
+                      value={selectedDate}
+                      onChange={(e) => setSelectedDate(e.target.value)}
+                      className="w-full sm:w-[200px] pl-10 pr-3 py-2.5 bg-background border-2 border-input rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition text-base font-medium"
+                      min={new Date().toISOString().split('T')[0]}
+                    />
+                  </div>
+                  <Link
+                    href={`/barber/dashboard/appointments?date=${selectedDate}`}
+                    className="w-full sm:w-auto text-center rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition"
+                  >
+                    Tümünü Gör
+                  </Link>
+                </div>
               </div>
 
               <div className="space-y-4">
-                {/* Örnek randevu kartları */}
-                <div className="rounded-lg border bg-background p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div className="relative h-10 w-10 overflow-hidden rounded-full">
-                        <Image
-                          src="/images/default-avatar.jpg"
-                          alt="Müşteri"
-                          fill
-                          className="object-cover"
-                  />
-                </div>
-                <div>
-                        <h4 className="font-medium">Ahmet Yılmaz</h4>
-                        <p className="text-sm text-muted-foreground">
-                          Saç Kesimi
-                        </p>
+                {appointments.length > 0 ? (
+                  appointments.map((appointment) => (
+                    <div
+                      key={appointment.id}
+                      className="rounded-lg border bg-background p-4"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <div className="relative h-10 w-10 overflow-hidden rounded-full">
+                            <Image
+                              src="/images/default-avatar.jpg"
+                              alt="Müşteri"
+                              fill
+                              className="object-cover"
+                            />
+                          </div>
+                          <div>
+                            <h4 className="font-medium">{appointment.service}</h4>
+                            <p className="text-sm text-muted-foreground">
+                              {appointment.employeeName}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-medium">{appointment.time}</p>
+                          <p className="text-sm text-muted-foreground">{appointment.duration} dk</p>
+                        </div>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="font-medium">14:30</p>
-                      <p className="text-sm text-muted-foreground">30 dk</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="rounded-lg border bg-background p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div className="relative h-10 w-10 overflow-hidden rounded-full">
-                        <Image
-                          src="/images/default-avatar.jpg"
-                          alt="Müşteri"
-                          fill
-                          className="object-cover"
-                  />
-                </div>
-                <div>
-                        <h4 className="font-medium">Ayşe Demir</h4>
-                        <p className="text-sm text-muted-foreground">
-                          Saç Boyama
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-medium">16:00</p>
-                      <p className="text-sm text-muted-foreground">60 dk</p>
-                    </div>
-                  </div>
-                </div>
+                  ))
+                ) : (
+                  <p className="text-center text-muted-foreground">Seçili tarih için randevu bulunmuyor</p>
+                )}
               </div>
             </div>
 

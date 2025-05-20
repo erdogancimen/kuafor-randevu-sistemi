@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { auth, db } from '@/config/firebase';
 import { collection, query, where, getDocs, orderBy, doc, updateDoc, Timestamp } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
-import { Calendar, Clock, User, Loader2, AlertCircle, MapPin } from 'lucide-react';
+import { Calendar, Clock, User, Loader2, AlertCircle, MapPin, Star } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import Image from 'next/image';
 
@@ -23,6 +23,7 @@ interface Appointment {
   duration: number;
   status: 'pending' | 'confirmed' | 'cancelled' | 'rejected' | 'completed';
   createdAt: Timestamp;
+  isReviewed?: boolean;
 }
 
 export default function AppointmentsPage() {
@@ -46,10 +47,26 @@ export default function AppointmentsPage() {
         );
 
         const querySnapshot = await getDocs(appointmentsQuery);
-        const appointmentsData = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as Appointment[];
+        const appointmentsData = await Promise.all(
+          querySnapshot.docs.map(async (doc) => {
+            const appointmentData = doc.data() as Omit<Appointment, 'id'>;
+            
+            // Değerlendirme durumunu kontrol et
+            const reviewsRef = collection(db, 'reviews');
+            const reviewsQuery = query(
+              reviewsRef,
+              where('appointmentId', '==', doc.id)
+            );
+            const reviewsSnapshot = await getDocs(reviewsQuery);
+            const isReviewed = !reviewsSnapshot.empty;
+
+            return {
+              id: doc.id,
+              ...appointmentData,
+              isReviewed
+            } as Appointment;
+          })
+        );
 
         setAppointments(appointmentsData);
       } catch (error) {
@@ -188,22 +205,33 @@ export default function AppointmentsPage() {
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(appointment.status)}`}>
                       {getStatusText(appointment.status)}
                     </span>
-                    {appointment.status === 'pending' && (
-                      <button
-                        onClick={() => handleCancel(appointment.id)}
-                        disabled={cancelling === appointment.id}
-                        className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {cancelling === appointment.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <>
-                            <AlertCircle className="h-4 w-4 mr-1" />
-                            <span>İptal Et</span>
-                          </>
-                        )}
-                      </button>
-                    )}
+                    <div className="flex space-x-2">
+                      {appointment.status === 'pending' && (
+                        <button
+                          onClick={() => handleCancel(appointment.id)}
+                          disabled={cancelling === appointment.id}
+                          className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {cancelling === appointment.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <>
+                              <AlertCircle className="h-4 w-4 mr-1" />
+                              <span>İptal Et</span>
+                            </>
+                          )}
+                        </button>
+                      )}
+                      {appointment.status === 'completed' && !appointment.isReviewed && (
+                        <button
+                          onClick={() => router.push(`/review/${appointment.id}`)}
+                          className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-primary hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
+                        >
+                          <Star className="h-4 w-4 mr-1" />
+                          <span>Değerlendir</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>

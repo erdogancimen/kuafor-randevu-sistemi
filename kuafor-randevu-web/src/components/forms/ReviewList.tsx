@@ -4,16 +4,15 @@ import { useState, useEffect } from 'react';
 import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { Star } from 'lucide-react';
-import Image from 'next/image';
 
 interface Review {
   id: string;
   userId: string;
-  userName: string;
-  userPhoto?: string;
+  barberId: string;
+  appointmentId: string;
   rating: number;
   comment: string;
-  createdAt: Date;
+  createdAt: any;
 }
 
 interface ReviewListProps {
@@ -36,8 +35,7 @@ export default function ReviewList({ barberId }: ReviewListProps) {
         const querySnapshot = await getDocs(reviewsQuery);
         const reviewsData = querySnapshot.docs.map(doc => ({
           id: doc.id,
-          ...doc.data(),
-          createdAt: doc.data().createdAt?.toDate()
+          ...doc.data()
         })) as Review[];
 
         setReviews(reviewsData);
@@ -52,52 +50,34 @@ export default function ReviewList({ barberId }: ReviewListProps) {
   }, [barberId]);
 
   if (loading) {
-    return (
-      <div className="flex justify-center items-center py-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary"></div>
-      </div>
-    );
+    return <div className="text-center text-gray-400">Yükleniyor...</div>;
   }
 
   if (reviews.length === 0) {
-    return (
-      <div className="text-center py-8 text-gray-400">
-        Henüz değerlendirme yapılmamış
-      </div>
-    );
+    return <div className="text-center text-gray-400">Henüz değerlendirme yapılmamış</div>;
   }
 
   return (
     <div className="space-y-6">
       {reviews.map((review) => (
-        <div key={review.id} className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-white/10">
-          <div className="flex items-start space-x-4">
-            <div className="relative h-12 w-12 rounded-full overflow-hidden bg-gray-700">
-              <Image
-                src={review.userPhoto || '/images/default-avatar.png'}
-                alt={review.userName}
-                fill
-                className="object-cover"
+        <div
+          key={review.id}
+          className="bg-gray-800/50 backdrop-blur-sm rounded-xl shadow-sm p-6 border border-white/10"
+        >
+          <div className="flex items-center space-x-2 mb-4">
+            {[...Array(5)].map((_, index) => (
+              <Star
+                key={index}
+                className={`w-5 h-5 ${
+                  index < review.rating ? 'text-yellow-400 fill-yellow-400' : 'text-gray-400'
+                }`}
               />
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center justify-between">
-                <h3 className="font-medium text-white">{review.userName}</h3>
-                <div className="flex items-center">
-                  <Star className="w-5 h-5 text-yellow-400" />
-                  <span className="ml-1 text-white">{review.rating}</span>
-                </div>
-              </div>
-              <p className="mt-2 text-gray-300">{review.comment}</p>
-              <p className="mt-2 text-sm text-gray-400">
-                {review.createdAt?.toLocaleDateString('tr-TR', {
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric'
-                })}
-              </p>
-            </div>
+            ))}
           </div>
+          <p className="text-gray-300">{review.comment}</p>
+          <p className="text-sm text-gray-400 mt-4">
+            {review.createdAt?.toDate().toLocaleDateString('tr-TR')}
+          </p>
         </div>
       ))}
     </div>

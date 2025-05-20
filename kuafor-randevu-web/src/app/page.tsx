@@ -9,6 +9,7 @@ import { signOut } from 'firebase/auth';
 import Image from 'next/image';
 import { MapPin, Star, Clock, LogOut, Search, Map, Filter, Calendar, User, ChevronRight } from 'lucide-react';
 import NotificationList from '@/components/notifications/NotificationList';
+import AIChat from '@/components/ai/AIChat';
 
 interface Barber {
   id: string;
@@ -19,10 +20,20 @@ interface Barber {
   type: 'male' | 'female' | 'mixed';
   distance?: number;
   services?: { name: string; price: number }[];
-  workingHours?: string;
+  workingHours?: {
+    [key: string]: {
+      start: string;
+      end: string;
+      isClosed?: boolean;
+    };
+  } | string;
   latitude?: number;
   longitude?: number;
   photoURL?: string;
+  stats?: {
+    averageRating: number;
+    totalReviews: number;
+  };
 }
 
 export default function Home() {
@@ -119,14 +130,35 @@ export default function Home() {
           where('role', '==', 'barber')
         );
         const barbersSnapshot = await getDocs(barbersQuery);
-        const allBarbers = barbersSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as Barber[];
+        const allBarbers = await Promise.all(barbersSnapshot.docs.map(async (doc) => {
+          const barberData = doc.data();
+          
+          // Her kuaför için değerlendirme istatistiklerini getir
+          const reviewsQuery = query(
+            collection(db, 'reviews'),
+            where('barberId', '==', doc.id)
+          );
+          const reviewsSnapshot = await getDocs(reviewsQuery);
+          const reviews = reviewsSnapshot.docs.map(reviewDoc => reviewDoc.data());
+          
+          const totalReviews = reviews.length;
+          const averageRating = totalReviews > 0
+            ? reviews.reduce((acc, review) => acc + (review.rating || 0), 0) / totalReviews
+            : 0;
+
+          return {
+            id: doc.id,
+            ...barberData,
+            stats: {
+              averageRating,
+              totalReviews
+            }
+          } as Barber;
+        }));
 
         // Popüler kuaförleri sırala (rating'e göre)
         const popularBarbers = [...allBarbers]
-          .sort((a, b) => (b.rating || 0) - (a.rating || 0))
+          .sort((a, b) => (b.stats?.averageRating || 0) - (a.stats?.averageRating || 0))
           .slice(0, 6);
 
         // Son ziyaret edilenler (şimdilik popülerlerden ilk 3'ü)
@@ -160,7 +192,7 @@ export default function Home() {
     };
 
     fetchBarbers();
-  }, [location]); // location değiştiğinde yakındaki kuaförleri güncelle
+  }, [location]);
 
   // İki nokta arasındaki mesafeyi hesapla (km cinsinden)
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
@@ -303,59 +335,57 @@ export default function Home() {
     const router = useRouter();
 
     const getWorkingHours = () => {
-      if (!barber.workingHours) return 'Çalışma saatleri bilgisi yok';
+      if (!barber.workingHours) return 'Çalışma saatleri belirtilmemiş';
       
-      try {
-        const hours = typeof barber.workingHours === 'string' 
-          ? JSON.parse(barber.workingHours) 
-          : barber.workingHours;
-
-        const today = new Date().toLocaleDateString('tr-TR', { weekday: 'long' });
-        const todayHours = hours[today];
-
-        if (todayHours?.isClosed) return 'Bugün kapalı';
-        if (!todayHours) return 'Çalışma saatleri bilgisi yok';
-
-        return `${todayHours.start} - ${todayHours.end}`;
-      } catch (error) {
-        return 'Çalışma saatleri bilgisi yok';
+      if (typeof barber.workingHours === 'string') {
+        return barber.workingHours;
       }
+      
+      const today = new Date().toLocaleDateString('tr-TR', { weekday: 'long' });
+      const hours = barber.workingHours[today];
+      
+      if (!hours || hours.isClosed) return 'Bugün kapalı';
+      return `${hours.start} - ${hours.end}`;
     };
 
     return (
       <div
         onClick={() => router.push(`/barber/${barber.id}`)}
-        className="group cursor-pointer rounded-lg border bg-card p-4 transition-colors hover:bg-accent"
+        className="group relative bg-gray-800/50 backdrop-blur-sm rounded-xl shadow-sm p-6 border border-white/10 hover:border-primary/50 transition cursor-pointer"
       >
         <div className="flex items-start space-x-4">
-          <div className="relative h-16 w-16 overflow-hidden rounded-full">
+          <div className="relative h-16 w-16 rounded-full overflow-hidden bg-white/5 border-2 border-white/10">
             <Image
               src={barber.photoURL || '/images/default-barber.jpg'}
               alt={`${barber.firstName} ${barber.lastName}`}
               fill
-              sizes="(max-width: 768px) 64px, 64px"
+              sizes="64px"
               className="object-cover"
             />
           </div>
-          <div className="flex-1 space-y-1">
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold">
-                {barber.firstName} {barber.lastName}
-              </h3>
-              <div className="flex items-center space-x-1">
-                <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                <span className="text-sm font-medium">{barber.rating?.toFixed(1) || '0.0'}</span>
-              </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-lg font-semibold text-white truncate">
+              {barber.firstName} {barber.lastName}
+            </h3>
+            <div className="flex items-center mt-1">
+              <Star className="w-4 h-4 text-yellow-400" />
+              <span className="ml-1 text-sm font-medium text-white">
+                {barber.stats?.averageRating.toFixed(1) || '0.0'}
+              </span>
+              <span className="ml-1 text-sm text-gray-400">
+                ({barber.stats?.totalReviews || 0})
+              </span>
             </div>
-            <div className="flex items-center space-x-2 text-sm text-muted-foreground">
-              <MapPin className="h-4 w-4" />
-              <span>{barber.address}</span>
+            <div className="flex items-center mt-2 text-sm text-gray-400">
+              <MapPin className="w-4 h-4 mr-1" />
+              <span className="truncate">{barber.address}</span>
             </div>
-            <div className="flex items-center space-x-2 text-sm text-muted-foreground">
-              <Clock className="h-4 w-4" />
+            <div className="flex items-center mt-1 text-sm text-gray-400">
+              <Clock className="w-4 h-4 mr-1" />
               <span>{getWorkingHours()}</span>
             </div>
           </div>
+          <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-primary transition" />
         </div>
       </div>
     );
@@ -431,6 +461,9 @@ export default function Home() {
           </div>
         </section>
       </div>
+
+      {/* AI Chat Component */}
+      <AIChat />
     </main>
   );
 }

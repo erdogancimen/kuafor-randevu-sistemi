@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import { doc, getDoc, collection, addDoc, serverTimestamp, query, where, getDocs, DocumentReference } from 'firebase/firestore';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { doc, getDoc, collection, addDoc, serverTimestamp, query, where, getDocs, DocumentReference, updateDoc, orderBy } from 'firebase/firestore';
 import { db, auth } from '@/config/firebase';
 import Image from 'next/image';
 import { MapPin, Star, Clock, Scissors, Phone, Mail, Calendar, Loader2, Home, Check, X, Users } from 'lucide-react';
@@ -10,6 +10,7 @@ import { toast } from 'react-hot-toast';
 import ReviewList from '@/components/forms/ReviewList';
 import FavoriteButton from '@/components/common/FavoriteButton';
 import { createNotification } from '@/lib/firebase/notifications';
+import ReviewForm from '@/components/forms/ReviewForm';
 
 interface Barber {
   id: string;
@@ -34,6 +35,11 @@ interface Barber {
   };
 }
 
+interface BarberStats {
+  averageRating: number;
+  totalReviews: number;
+}
+
 interface Employee {
   id: string;
   firstName: string;
@@ -54,15 +60,26 @@ interface Employee {
 
 interface Appointment {
   id: string;
+  userId: string;
+  barberId: string;
+  employeeId: string;
+  barberName: string;
+  employeeName: string;
+  service: string;
   date: string;
   time: string;
+  price: number;
   duration: number;
+  status: 'pending' | 'confirmed' | 'cancelled' | 'rejected' | 'completed';
+  createdAt: any;
 }
 
 export default function BarberDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [barber, setBarber] = useState<Barber | null>(null);
+  const [barberStats, setBarberStats] = useState<BarberStats>({ averageRating: 0, totalReviews: 0 });
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [loading, setLoading] = useState(true);
@@ -72,6 +89,43 @@ export default function BarberDetailPage() {
   const [bookingLoading, setBookingLoading] = useState(false);
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [existingAppointments, setExistingAppointments] = useState<Appointment[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+
+  const handleCompleteAppointment = async (appointmentId: string) => {
+    try {
+      // Randevuyu tamamlandı olarak işaretle
+      const appointmentRef = doc(db, 'appointments', appointmentId);
+      await updateDoc(appointmentRef, {
+        status: 'completed',
+        completedAt: new Date()
+      });
+
+      // Randevu bilgilerini getir
+      const appointmentDoc = await getDoc(appointmentRef);
+      const appointment = appointmentDoc.data();
+
+      if (appointment) {
+        // Değerlendirme bildirimi gönder
+        await createNotification({
+          userId: appointment.userId,
+          title: 'Değerlendirme Yapın',
+          message: `${barber?.firstName} ${barber?.lastName} kuaföründeki randevunuz tamamlandı. Deneyiminizi değerlendirmek ister misiniz?`,
+          type: 'review_request',
+          read: false,
+          data: {
+            appointmentId,
+            barberId: barber?.id,
+            url: `/barber/${barber?.id}?review=true&appointmentId=${appointmentId}`
+          }
+        });
+      }
+
+      toast.success('Randevu tamamlandı ve müşteriye bildirim gönderildi');
+    } catch (error) {
+      console.error('Error completing appointment:', error);
+      toast.error('Randevu tamamlanırken bir hata oluştu');
+    }
+  };
 
   useEffect(() => {
     const fetchBarberAndEmployees = async () => {
@@ -90,6 +144,24 @@ export default function BarberDetailPage() {
           const barberData = { id: barberDoc.id, ...barberDoc.data() } as Barber;
           console.log('Barber Data:', barberData);
           setBarber(barberData);
+
+          // Değerlendirme istatistiklerini getir
+          const reviewsQuery = query(
+            collection(db, 'reviews'),
+            where('barberId', '==', params.id)
+          );
+          const reviewsSnapshot = await getDocs(reviewsQuery);
+          
+          const reviews = reviewsSnapshot.docs.map(doc => doc.data());
+          const totalReviews = reviews.length;
+          const averageRating = totalReviews > 0
+            ? reviews.reduce((acc, review) => acc + (review.rating || 0), 0) / totalReviews
+            : 0;
+
+          setBarberStats({
+            averageRating,
+            totalReviews
+          });
 
           // Çalışanları getir
           const employeesQuery = query(
@@ -179,31 +251,34 @@ export default function BarberDetailPage() {
 
   useEffect(() => {
     const fetchAppointments = async () => {
-      if (!selectedDate || !selectedEmployee) return;
+      if (!barber?.id) return;
 
       try {
+        // Bugünün tarihini al
+        const today = new Date().toISOString().split('T')[0];
+
         const appointmentsQuery = query(
           collection(db, 'appointments'),
-          where('employeeId', '==', selectedEmployee.id),
-          where('date', '==', selectedDate),
+          where('barberId', '==', barber.id),
+          where('date', '==', today),
           where('status', 'in', ['pending', 'confirmed'])
         );
 
         const querySnapshot = await getDocs(appointmentsQuery);
-        const appointments = querySnapshot.docs.map(doc => ({
+        const appointmentsData = querySnapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
         })) as Appointment[];
 
-        setExistingAppointments(appointments);
+        setAppointments(appointmentsData);
       } catch (error) {
         console.error('Error fetching appointments:', error);
-        toast.error('Randevu bilgileri yüklenirken bir hata oluştu');
+        toast.error('Randevular yüklenirken bir hata oluştu');
       }
     };
 
     fetchAppointments();
-  }, [selectedDate, selectedEmployee]);
+  }, [barber?.id]);
 
   useEffect(() => {
     if (!selectedDate || !selectedEmployee || !selectedService) return;
@@ -398,7 +473,12 @@ export default function BarberDetailPage() {
               </div>
               <div className="flex items-center justify-center md:justify-start mt-2">
                 <Star className="w-5 h-5 text-yellow-400" />
-                <span className="ml-1 text-lg font-medium text-white">{barber.rating?.toFixed(1) || '0.0'}</span>
+                <span className="ml-1 text-lg font-medium text-white">
+                  {barberStats.averageRating.toFixed(1)}
+                </span>
+                <span className="ml-2 text-sm text-gray-400">
+                  ({barberStats.totalReviews} değerlendirme)
+                </span>
               </div>
               <div className="mt-4 flex flex-wrap justify-center md:justify-start gap-4">
                 <div className="flex items-center text-white/70">
@@ -580,7 +660,21 @@ export default function BarberDetailPage() {
 
         {/* Değerlendirmeler */}
         <div className="mt-8">
-          <h2 className="text-xl font-semibold mb-4">Değerlendirmeler</h2>
+          <h2 className="text-xl font-semibold mb-4 text-white">Değerlendirmeler</h2>
+          {searchParams?.get('review') === 'true' && searchParams?.get('appointmentId') ? (
+            <div className="mb-8">
+              <ReviewForm
+                barberId={barber?.id || ''}
+                appointmentId={searchParams.get('appointmentId') || ''}
+                onReviewSubmitted={() => {
+                  // URL'den review parametresini kaldır
+                  const newUrl = window.location.pathname;
+                  window.history.replaceState({}, '', newUrl);
+                  toast.success('Değerlendirmeniz için teşekkür ederiz!');
+                }}
+              />
+            </div>
+          ) : null}
           <ReviewList barberId={barber?.id || ''} />
         </div>
       </div>

@@ -1,102 +1,51 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, Timestamp, getDoc } from 'firebase/firestore';
-import { db, auth } from '@/config/firebase';
-import { Bell, Loader2, Calendar, Star, X } from 'lucide-react';
+import { Bell, Loader2, Calendar, Star } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useRouter } from 'next/navigation';
-
-interface Notification {
-  id: string;
-  userId: string;
-  title: string;
-  message: string;
-  type: 'appointment' | 'review';
-  data?: {
-    appointmentId?: string;
-    reviewId?: string;
-  };
-  read: boolean;
-  createdAt: Timestamp;
-}
+import { getNotifications, markNotificationAsRead, Notification as NotificationType } from '@/lib/firebase/notifications';
+import { auth } from '@/config/firebase';
 
 export default function NotificationList() {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] = useState<NotificationType[]>([]);
   const [loading, setLoading] = useState(true);
   const [showNotifications, setShowNotifications] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
-    if (!auth.currentUser) return;
+    const fetchNotifications = async () => {
+      if (!auth.currentUser) return;
+      
+      try {
+        const data = await getNotifications(auth.currentUser.uid);
+        setNotifications(data);
+        setLoading(false);
+      } catch (error) {
+        console.error('Error fetching notifications:', error);
+        toast.error('Bildirimler yüklenirken bir hata oluştu');
+        setLoading(false);
+      }
+    };
 
-    const notificationsQuery = query(
-      collection(db, 'notifications'),
-      where('userId', '==', auth.currentUser.uid),
-      orderBy('createdAt', 'desc')
-    );
-
-    const unsubscribe = onSnapshot(notificationsQuery, (snapshot) => {
-      const notifications = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Notification[];
-
-      setNotifications(notifications);
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
+    fetchNotifications();
   }, []);
 
-  const handleNotificationClick = async (notification: Notification) => {
-    if (!auth.currentUser) return;
-
+  const handleNotificationClick = async (notification: NotificationType) => {
     try {
-      // Bildirimi okundu olarak işaretle
       if (!notification.read) {
-        const notificationRef = doc(db, 'notifications', notification.id);
-        await updateDoc(notificationRef, {
-          read: true
-        });
+        await markNotificationAsRead(notification.id);
+        setNotifications(prev =>
+          prev.map(n =>
+            n.id === notification.id ? { ...n, read: true } : n
+          )
+        );
       }
 
-      // Kullanıcı rolünü kontrol et
-      const userRef = doc(db, 'users', auth.currentUser.uid);
-      const userDoc = await getDoc(userRef);
-      
-      if (!userDoc.exists()) {
-        console.error('User document does not exist');
-        return;
-      }
-
-      const userData = userDoc.data();
-      console.log('User Role:', userData?.role);
-
-      // Bildirim tipine göre yönlendirme yap
-      if (notification.type === 'appointment') {
-        // Çalışan rolü kontrolü
-        if (userData && userData.role === 'employee') {
-          console.log('User is employee, redirecting to employee appointments');
-          await router.push('/employee/appointments');
-          return;
-        }
-
-        // Kuaför sahibi rolü kontrolü
-        if (userData && userData.role === 'barber') {
-          console.log('User is barber, redirecting to barber appointments');
-          await router.push('/barber/appointments');
-          return;
-        }
-
-        // Müşteri yönlendirmesi
-        console.log('User is customer, redirecting to customer appointments');
-        await router.push('/appointments');
-      } else if (notification.type === 'review') {
-        // Değerlendirme bildirimi için kuaför sayfasına yönlendir
-        if (notification.data?.reviewId) {
-          await router.push(`/barber/${notification.data.reviewId}`);
-        }
+      if (notification.type === 'review_request') {
+        router.push('/appointments');
+      } else if (notification.data?.url) {
+        router.push(notification.data.url);
       }
     } catch (error) {
       console.error('Error handling notification:', error);

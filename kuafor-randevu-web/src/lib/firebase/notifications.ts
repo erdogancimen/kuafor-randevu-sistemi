@@ -1,59 +1,60 @@
-import { collection, addDoc, query, where, orderBy, getDocs, updateDoc, doc, serverTimestamp, writeBatch } from 'firebase/firestore';
-import { db } from './config';
-import { Notification } from '@/types/notification';
+import { collection, addDoc, query, where, getDocs, updateDoc, doc, orderBy, limit, writeBatch } from 'firebase/firestore';
+import { db } from '@/config/firebase';
 
 export interface Notification {
   id: string;
   userId: string;
   title: string;
   message: string;
-  type: 'appointment' | 'review' | 'system';
+  type: 'appointment' | 'review_request' | 'system';
   read: boolean;
   data?: {
     appointmentId?: string;
-    reviewId?: string;
+    barberId?: string;
+    url?: string;
   };
   createdAt: any;
 }
 
-export async function createNotification(notificationData: Omit<Notification, 'id' | 'createdAt'>) {
+export const createNotification = async (notification: Omit<Notification, 'id' | 'createdAt'>) => {
   try {
-    const notificationRef = await addDoc(collection(db, 'notifications'), {
-      ...notificationData,
-      read: false,
-      createdAt: serverTimestamp()
+    const notificationsRef = collection(db, 'notifications');
+    const docRef = await addDoc(notificationsRef, {
+      ...notification,
+      createdAt: new Date()
     });
-
-    return notificationRef.id;
+    return docRef.id;
   } catch (error) {
     console.error('Error creating notification:', error);
     throw error;
   }
-}
+};
 
 export const getNotifications = async (userId: string) => {
   try {
-    const notificationsQuery = query(
-      collection(db, 'notifications'),
+    const notificationsRef = collection(db, 'notifications');
+    const q = query(
+      notificationsRef,
       where('userId', '==', userId),
-      orderBy('createdAt', 'desc')
+      orderBy('createdAt', 'desc'),
+      limit(50)
     );
-
-    const snapshot = await getDocs(notificationsQuery);
-    return snapshot.docs.map(doc => ({
+    
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => ({
       id: doc.id,
-      ...doc.data(),
-      createdAt: doc.data().createdAt?.toDate() || new Date()
+      ...doc.data()
     })) as Notification[];
   } catch (error) {
-    console.error('Error fetching notifications:', error);
+    console.error('Error getting notifications:', error);
     throw error;
   }
 };
 
 export const markNotificationAsRead = async (notificationId: string) => {
   try {
-    await updateDoc(doc(db, 'notifications', notificationId), {
+    const notificationRef = doc(db, 'notifications', notificationId);
+    await updateDoc(notificationRef, {
       read: true
     });
   } catch (error) {

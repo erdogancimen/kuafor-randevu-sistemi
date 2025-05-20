@@ -50,6 +50,15 @@ interface Appointment {
   createdAt: any;
 }
 
+interface Statistics {
+  totalCustomers: number;
+  todayAppointments: number;
+  completedTodayAppointments: number;
+  monthlyServices: number;
+  lastMonthServices: number;
+  averageDuration: number;
+}
+
 export default function BarberProfile() {
   const [profile, setProfile] = useState<BarberProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -66,6 +75,20 @@ export default function BarberProfile() {
   const router = useRouter();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  });
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [statistics, setStatistics] = useState<Statistics>({
+    totalCustomers: 0,
+    todayAppointments: 0,
+    completedTodayAppointments: 0,
+    monthlyServices: 0,
+    lastMonthServices: 0,
+    averageDuration: 0
+  });
 
   // Varsayılan çalışma saatleri
   const defaultWorkingHours = {
@@ -97,6 +120,81 @@ export default function BarberProfile() {
       } catch (error) {
         console.error('Error fetching appointments:', error);
         toast.error('Randevular yüklenirken bir hata oluştu');
+      }
+    };
+
+    const fetchStatistics = async (barberId: string) => {
+      try {
+        // Bugünün tarihini al
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        // Bu ayın başlangıcını al
+        const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+        
+        // Geçen ayın başlangıcını al
+        const firstDayOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        const lastDayOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+
+        // Tüm randevuları getir
+        const appointmentsQuery = query(
+          collection(db, 'appointments'),
+          where('barberId', '==', barberId)
+        );
+        const appointmentsSnapshot = await getDocs(appointmentsQuery);
+        const allAppointments = appointmentsSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as Appointment[];
+
+        // Benzersiz müşteri sayısını hesapla
+        const uniqueCustomers = new Set(allAppointments.map(app => app.userId));
+        
+        // Bugünkü randevuları filtrele
+        const todayAppointments = allAppointments.filter(app => {
+          const appointmentDate = new Date(app.date);
+          return appointmentDate >= today;
+        });
+
+        // Bugün tamamlanan randevuları filtrele
+        const completedTodayAppointments = todayAppointments.filter(
+          app => app.status === 'completed'
+        );
+
+        // Bu ayki hizmetleri filtrele
+        const monthlyServices = allAppointments.filter(app => {
+          const appointmentDate = new Date(app.date);
+          return appointmentDate >= firstDayOfMonth;
+        });
+
+        // Geçen ayki hizmetleri filtrele
+        const lastMonthServices = allAppointments.filter(app => {
+          const appointmentDate = new Date(app.date);
+          return appointmentDate >= firstDayOfLastMonth && appointmentDate <= lastDayOfLastMonth;
+        });
+
+        // Ortalama süreyi hesapla
+        const totalDuration = allAppointments.reduce((sum, app) => sum + (app.duration || 0), 0);
+        const averageDuration = allAppointments.length > 0 
+          ? Math.round(totalDuration / allAppointments.length) 
+          : 0;
+
+        // Geçen aya göre yüzde değişimi hesapla
+        const monthlyChange = lastMonthServices.length > 0
+          ? Math.round(((monthlyServices.length - lastMonthServices.length) / lastMonthServices.length) * 100)
+          : 0;
+
+        setStatistics({
+          totalCustomers: uniqueCustomers.size,
+          todayAppointments: todayAppointments.length,
+          completedTodayAppointments: completedTodayAppointments.length,
+          monthlyServices: monthlyServices.length,
+          lastMonthServices: lastMonthServices.length,
+          averageDuration
+        });
+      } catch (error) {
+        console.error('Error fetching statistics:', error);
+        toast.error('İstatistikler yüklenirken bir hata oluştu');
       }
     };
 
@@ -134,6 +232,9 @@ export default function BarberProfile() {
 
           // Randevuları getir
           await fetchAppointments(user.uid);
+
+          // İstatistikleri getir
+          await fetchStatistics(user.uid);
         } else {
           router.push('/');
         }
@@ -159,6 +260,14 @@ export default function BarberProfile() {
     }
   };
 
+  const handlePasswordChange = (field: keyof typeof passwordData, value: string) => {
+    setPasswordData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+    setPasswordError(null);
+  };
+
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!profile) return;
@@ -168,6 +277,35 @@ export default function BarberProfile() {
       const user = auth.currentUser;
       if (!user) throw new Error('Kullanıcı bulunamadı');
 
+      // Şifre güncelleme kontrolü
+      if (passwordData.newPassword) {
+        if (passwordData.newPassword !== passwordData.confirmPassword) {
+          setPasswordError('Yeni şifreler eşleşmiyor');
+          setLoading(false);
+          return;
+        }
+
+        if (passwordData.newPassword.length < 6) {
+          setPasswordError('Şifre en az 6 karakter olmalıdır');
+          setLoading(false);
+          return;
+        }
+
+        // Mevcut şifreyi kontrol et ve yeni şifreyi güncelle
+        try {
+          const credential = EmailAuthProvider.credential(
+            user.email!,
+            passwordData.currentPassword
+          );
+          await reauthenticateWithCredential(user, credential);
+          await updatePassword(user, passwordData.newPassword);
+        } catch (error) {
+          setPasswordError('Mevcut şifre yanlış');
+          setLoading(false);
+          return;
+        }
+      }
+
       const docRef = doc(db, 'users', user.uid);
       await updateDoc(docRef, {
         ...profile,
@@ -175,9 +313,12 @@ export default function BarberProfile() {
       });
 
       toast.success('Profil başarıyla güncellendi');
-      setEditingServices(false);
-      setEditingWorkingHours(false);
       setEditingProfile(false);
+      setPasswordData({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: ''
+      });
     } catch (error) {
       console.error('Error updating profile:', error);
       toast.error('Profil güncellenirken bir hata oluştu');
@@ -370,7 +511,7 @@ export default function BarberProfile() {
                           value={profile?.phone || ''}
                           onChange={(e) => handleProfileChange('phone', e.target.value)}
                           className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  />
+                        />
                       </div>
                       <div>
                         <label className="text-sm font-medium">Adres</label>
@@ -381,11 +522,56 @@ export default function BarberProfile() {
                           rows={3}
                         />
                       </div>
+
+                      {/* Şifre Güncelleme Alanı */}
+                      <div className="border-t pt-4 mt-4">
+                        <h3 className="text-sm font-medium mb-4">Şifre Güncelle</h3>
+                        <div className="space-y-4">
+                          <div>
+                            <label className="text-sm font-medium">Mevcut Şifre</label>
+                            <input
+                              type="password"
+                              value={passwordData.currentPassword}
+                              onChange={(e) => handlePasswordChange('currentPassword', e.target.value)}
+                              className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-sm font-medium">Yeni Şifre</label>
+                            <input
+                              type="password"
+                              value={passwordData.newPassword}
+                              onChange={(e) => handlePasswordChange('newPassword', e.target.value)}
+                              className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-sm font-medium">Yeni Şifre (Tekrar)</label>
+                            <input
+                              type="password"
+                              value={passwordData.confirmPassword}
+                              onChange={(e) => handlePasswordChange('confirmPassword', e.target.value)}
+                              className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                            />
+                          </div>
+                          {passwordError && (
+                            <p className="text-sm text-destructive">{passwordError}</p>
+                          )}
+                        </div>
+                      </div>
                     </div>
                     <div className="flex justify-end space-x-2">
                       <button
                         type="button"
-                        onClick={() => setEditingProfile(false)}
+                        onClick={() => {
+                          setEditingProfile(false);
+                          setPasswordData({
+                            currentPassword: '',
+                            newPassword: '',
+                            confirmPassword: ''
+                          });
+                          setPasswordError(null);
+                        }}
                         className="rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground"
                       >
                         İptal
@@ -413,17 +599,17 @@ export default function BarberProfile() {
                     <div className="flex items-center space-x-2">
                       <Mail className="h-4 w-4 text-muted-foreground" />
                       <span className="text-sm">{profile.email}</span>
-                  </div>
+                    </div>
                     <button
                       onClick={() => setEditingProfile(true)}
                       className="mt-4 w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
                     >
                       Profili Düzenle
-                  </button>
+                    </button>
                   </>
                 )}
+              </div>
             </div>
-          </div>
 
             {/* Çalışma Saatleri */}
             <div className="rounded-lg border bg-card p-6">
@@ -458,7 +644,7 @@ export default function BarberProfile() {
                               disabled={!editingWorkingHours}
                             />
                             <span>-</span>
-                  <input
+                            <input
                               type="time"
                               value={hours.end || ''}
                               onChange={(e) => handleUpdateWorkingHours(day, 'end', e.target.value)}
@@ -486,9 +672,9 @@ export default function BarberProfile() {
                           >
                             {hours.isClosed ? 'Aç' : 'Kapat'}
                           </button>
-                )}
-              </div>
-              </div>
+                        )}
+                      </div>
+                    </div>
                   );
                 })}
                 {editingWorkingHours && (
@@ -509,7 +695,7 @@ export default function BarberProfile() {
 
           {/* Sağ Taraf - Hizmetler */}
           <div className="space-y-8">
-          {/* Hizmetler */}
+            {/* Hizmetler */}
             <div className="rounded-lg border bg-card p-6">
               <div className="mb-6 flex items-center justify-between">
                 <h3 className="flex items-center text-lg font-semibold">
@@ -596,17 +782,17 @@ export default function BarberProfile() {
                             </div>
                           </div>
                           <div className="flex justify-end">
-                  <button
+                            <button
                               type="button"
                               onClick={() => handleRemoveService(index)}
                               className="text-destructive hover:text-destructive/90 transition flex items-center gap-1"
-                  >
+                            >
                               <X className="h-4 w-4" />
                               <span>Hizmeti Sil</span>
-                  </button>
-                </div>
+                            </button>
+                          </div>
                         </div>
-            </div>
+                      </div>
                     ))}
 
                     <div className="mt-6 p-4 bg-background rounded-lg border border-input">
@@ -616,10 +802,10 @@ export default function BarberProfile() {
                           <label className="block text-sm font-medium mb-1">
                             Hizmet Adı
                           </label>
-                  <input
-                    type="text"
-                    value={newService.name}
-                    onChange={(e) => setNewService({ ...newService, name: e.target.value })}
+                          <input
+                            type="text"
+                            value={newService.name}
+                            onChange={(e) => setNewService({ ...newService, name: e.target.value })}
                             className="w-full px-4 py-2 bg-background border border-input rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition"
                             placeholder="Örn: Saç Kesimi"
                           />
@@ -633,16 +819,16 @@ export default function BarberProfile() {
                               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                                 <Clock className="h-5 w-5 text-muted-foreground" />
                               </div>
-                  <input
-                    type="number"
+                              <input
+                                type="number"
                                 value={newService.duration}
                                 onChange={(e) => setNewService({ ...newService, duration: parseInt(e.target.value) || 0 })}
                                 className="w-full pl-10 pr-3 py-2 bg-background border border-input rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition"
                                 placeholder="30"
                                 min="1"
                               />
-                </div>
-              </div>
+                            </div>
+                          </div>
                           <div>
                             <label className="block text-sm font-medium mb-1">
                               Fiyat (₺)
@@ -650,16 +836,16 @@ export default function BarberProfile() {
                             <div className="relative">
                               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                                 <span className="text-muted-foreground">₺</span>
-                      </div>
-                        <input
-                          type="number"
+                              </div>
+                              <input
+                                type="number"
                                 value={newService.price}
                                 onChange={(e) => setNewService({ ...newService, price: parseInt(e.target.value) || 0 })}
                                 className="w-full pl-10 pr-3 py-2 bg-background border border-input rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition"
                                 placeholder="100"
                                 min="1"
-                        />
-                      </div>
+                              />
+                            </div>
                           </div>
                         </div>
                         <button
@@ -670,8 +856,8 @@ export default function BarberProfile() {
                           Hizmet Ekle
                         </button>
                       </div>
-            </div>
-          </div>
+                    </div>
+                  </div>
 
                   <div className="flex justify-end space-x-2">
                     <button
@@ -681,11 +867,11 @@ export default function BarberProfile() {
                     >
                       İptal
                     </button>
-                <button
+                    <button
                       type="submit"
                       disabled={loading}
                       className="px-4 py-2 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition disabled:opacity-50 flex items-center gap-2"
-                >
+                    >
                       {loading ? (
                         <>
                           <Loader2 className="h-4 w-4 animate-spin" />
@@ -694,7 +880,7 @@ export default function BarberProfile() {
                       ) : (
                         'Değişiklikleri Kaydet'
                       )}
-                </button>
+                    </button>
                   </div>
                 </form>
               ) : (
@@ -703,7 +889,7 @@ export default function BarberProfile() {
                     <div
                       key={index}
                       className="bg-background p-4 rounded-lg border border-input"
-                  >
+                    >
                       <h4 className="font-medium">{service.name}</h4>
                       <div className="mt-2 flex items-center justify-between text-sm">
                         <div className="flex items-center text-muted-foreground">
@@ -784,6 +970,87 @@ export default function BarberProfile() {
               </div>
             </div>
 
+            {/* Çalışma Saatleri */}
+            <div className="rounded-lg border bg-card p-6">
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="flex items-center text-lg font-semibold">
+                  <Clock className="mr-2 h-5 w-5" />
+                  Çalışma Saatleri
+                </h3>
+                <button
+                  onClick={() => setEditingWorkingHours(!editingWorkingHours)}
+                  className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                >
+                  {editingWorkingHours ? 'İptal' : 'Düzenle'}
+                </button>
+              </div>
+              <div className="space-y-4">
+                {Object.entries(defaultWorkingHours).map(([day, defaultHours]) => {
+                  const hours = profile?.workingHours?.[day] || defaultHours;
+                  return (
+                    <div key={day} className="flex items-center justify-between">
+                      <span className="font-medium">{day}</span>
+                      <div className="flex items-center space-x-2">
+                        {hours.isClosed ? (
+                          <span className="text-sm text-muted-foreground">Kapalı</span>
+                        ) : (
+                          <>
+                            <input
+                              type="time"
+                              value={hours.start || ''}
+                              onChange={(e) => handleUpdateWorkingHours(day, 'start', e.target.value)}
+                              className="w-24 rounded-md border border-input bg-background px-2 py-1 text-sm"
+                              disabled={!editingWorkingHours}
+                            />
+                            <span>-</span>
+                            <input
+                              type="time"
+                              value={hours.end || ''}
+                              onChange={(e) => handleUpdateWorkingHours(day, 'end', e.target.value)}
+                              className="w-24 rounded-md border border-input bg-background px-2 py-1 text-sm"
+                              disabled={!editingWorkingHours}
+                            />
+                          </>
+                        )}
+                        {editingWorkingHours && (
+                          <button
+                            onClick={() => {
+                              const updatedHours = { ...hours };
+                              if (hours.isClosed) {
+                                updatedHours.isClosed = false;
+                                updatedHours.start = '09:00';
+                                updatedHours.end = '18:00';
+                              } else {
+                                updatedHours.isClosed = true;
+                                updatedHours.start = '00:00';
+                                updatedHours.end = '00:00';
+                              }
+                              handleUpdateWorkingHours(day, 'isClosed', updatedHours);
+                            }}
+                            className="ml-2 rounded-md bg-secondary px-2 py-1 text-xs font-medium text-secondary-foreground hover:bg-secondary/90"
+                          >
+                            {hours.isClosed ? 'Aç' : 'Kapat'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+                {editingWorkingHours && (
+                  <div className="flex justify-end">
+                    <button
+                      onClick={handleUpdateProfile}
+                      disabled={loading}
+                      className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                    >
+                      {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Kaydet
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* İstatistikler */}
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="rounded-lg border bg-card p-6">
@@ -791,20 +1058,20 @@ export default function BarberProfile() {
                   <Users className="h-5 w-5 text-primary" />
                   <h3 className="text-lg font-semibold">Toplam Müşteri</h3>
                 </div>
-                <p className="mt-2 text-3xl font-bold">128</p>
+                <p className="mt-2 text-3xl font-bold">{statistics.totalCustomers}</p>
                 <p className="text-sm text-muted-foreground">
-                  Bu ay +12 yeni müşteri
+                  Benzersiz müşteri sayısı
                 </p>
-          </div>
+              </div>
 
               <div className="rounded-lg border bg-card p-6">
                 <div className="flex items-center space-x-2">
                   <Calendar className="h-5 w-5 text-primary" />
                   <h3 className="text-lg font-semibold">Bugünkü Randevu</h3>
                 </div>
-                <p className="mt-2 text-3xl font-bold">8</p>
+                <p className="mt-2 text-3xl font-bold">{statistics.todayAppointments}</p>
                 <p className="text-sm text-muted-foreground">
-                  2 randevu tamamlandı
+                  {statistics.completedTodayAppointments} randevu tamamlandı
                 </p>
               </div>
 
@@ -813,9 +1080,14 @@ export default function BarberProfile() {
                   <Scissors className="h-5 w-5 text-primary" />
                   <h3 className="text-lg font-semibold">Aylık Hizmet</h3>
                 </div>
-                <p className="mt-2 text-3xl font-bold">156</p>
+                <p className="mt-2 text-3xl font-bold">{statistics.monthlyServices}</p>
                 <p className="text-sm text-muted-foreground">
-                  Geçen aya göre +15%
+                  {statistics.lastMonthServices > 0 && (
+                    <>
+                      Geçen aya göre {statistics.monthlyServices > statistics.lastMonthServices ? '+' : ''}
+                      {Math.round(((statistics.monthlyServices - statistics.lastMonthServices) / statistics.lastMonthServices) * 100)}%
+                    </>
+                  )}
                 </p>
               </div>
 
@@ -824,7 +1096,7 @@ export default function BarberProfile() {
                   <Clock className="h-5 w-5 text-primary" />
                   <h3 className="text-lg font-semibold">Ortalama Süre</h3>
                 </div>
-                <p className="mt-2 text-3xl font-bold">45dk</p>
+                <p className="mt-2 text-3xl font-bold">{statistics.averageDuration}dk</p>
                 <p className="text-sm text-muted-foreground">
                   Müşteri başına
                 </p>

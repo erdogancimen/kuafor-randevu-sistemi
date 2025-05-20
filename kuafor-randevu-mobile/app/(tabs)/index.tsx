@@ -6,21 +6,22 @@ import {
   ScrollView,
   TouchableOpacity,
   Image,
-  ImageStyle,
   TextInput,
   ActivityIndicator,
+  Dimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { theme } from '@/utils/theme';
-import { Button } from '@/components/common/Button';
 import { Ionicons } from '@expo/vector-icons';
 import { getFirestore, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
 
 // Varsayılan görseller için
 const DEFAULT_IMAGES = {
   hero: require('@/assets/images/hero/hero-banner.jpg'),
-  barber: require('@/assets/images/barbers/default.jpg'),
+  barber: require('@/assets/images/default.jpg'),
 };
+
+const { width } = Dimensions.get('window');
 
 interface WorkingHours {
   start: string;
@@ -30,22 +31,32 @@ interface WorkingHours {
 
 interface Barber {
   id: string;
-  name: string;
-  image: string;
+  firstName: string;
+  lastName: string;
+  photoURL?: string;
   rating: number;
   reviews: number;
   services: string[];
   workingHours: Record<string, WorkingHours>;
-  location: string;
+  address: string;
   description: string;
   latitude?: number;
   longitude?: number;
+  type: 'male' | 'female' | 'mixed';
+  stats?: {
+    averageRating: number;
+    totalReviews: number;
+  };
 }
 
 export default function HomeScreen() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [featuredBarbers, setFeaturedBarbers] = useState<Barber[]>([]);
+  const [selectedBarberType, setSelectedBarberType] = useState<'male' | 'female' | 'mixed' | 'all'>('all');
+  const [selectedService, setSelectedService] = useState<string>('all');
+  const [showFilters, setShowFilters] = useState(false);
+  const [popularBarbers, setPopularBarbers] = useState<Barber[]>([]);
   const [recentBarbers, setRecentBarbers] = useState<Barber[]>([]);
+  const [nearbyBarbers, setNearbyBarbers] = useState<Barber[]>([]);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
@@ -68,11 +79,12 @@ export default function HomeScreen() {
       const barbers = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
-        image: doc.data().photoURL || DEFAULT_IMAGES.barber,
+        photoURL: doc.data().photoURL || DEFAULT_IMAGES.barber,
       })) as Barber[];
 
-      setFeaturedBarbers(barbers.slice(0, 3));
+      setPopularBarbers(barbers.slice(0, 3));
       setRecentBarbers(barbers.slice(3));
+      setNearbyBarbers(barbers.slice(3, 6));
     } catch (error) {
       console.error('Error fetching barbers:', error);
     } finally {
@@ -112,6 +124,7 @@ export default function HomeScreen() {
 
   return (
     <ScrollView style={styles.container}>
+      {/* Hero Section */}
       <View style={styles.hero}>
         <Image
           source={DEFAULT_IMAGES.hero}
@@ -119,9 +132,9 @@ export default function HomeScreen() {
           resizeMode="cover"
         />
         <View style={styles.heroOverlay}>
-          <Text style={styles.heroTitle}>En İyi Berberler</Text>
+          <Text style={styles.heroTitle}>En İyi Kuaförleri</Text>
           <Text style={styles.heroSubtitle}>
-            Size en yakın berberi bulun ve hemen randevu alın
+            Size en yakın kuaförleri bulun, değerlendirmeleri inceleyin ve hemen randevu alın.
           </Text>
           <TouchableOpacity 
             style={styles.loginButton}
@@ -132,54 +145,91 @@ export default function HomeScreen() {
         </View>
       </View>
 
+      {/* Search Section */}
       <View style={styles.searchContainer}>
         <View style={styles.searchInputContainer}>
           <Ionicons name="search" size={20} color={theme.colors.textSecondary} style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Berber ara..."
+            placeholder="Kuaför ara..."
             value={searchQuery}
             onChangeText={setSearchQuery}
             onSubmitEditing={handleSearch}
             returnKeyType="search"
             placeholderTextColor={theme.colors.textMuted}
           />
+          <TouchableOpacity 
+            style={styles.filterButton}
+            onPress={() => setShowFilters(!showFilters)}
+          >
+          <Ionicons name="filter" size={20} color={theme.colors.textSecondary} />
+
+          </TouchableOpacity>
         </View>
+
+        {/* Filters */}
+        {showFilters && (
+          <View style={styles.filtersContainer}>
+            <View style={styles.filterRow}>
+              <Text style={styles.filterLabel}>Kuaför Türü</Text>
+              <View style={styles.filterOptions}>
+                {['all', 'male', 'female', 'mixed'].map((type) => (
+                  <TouchableOpacity
+                    key={type}
+                    style={[
+                      styles.filterOption,
+                      selectedBarberType === type && styles.filterOptionSelected
+                    ]}
+                    onPress={() => setSelectedBarberType(type as any)}
+                  >
+                    <Text style={[
+                      styles.filterOptionText,
+                      selectedBarberType === type && styles.filterOptionTextSelected
+                    ]}>
+                      {type === 'all' ? 'Tümü' : 
+                       type === 'male' ? 'Erkek' :
+                       type === 'female' ? 'Kadın' : 'Karma'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          </View>
+        )}
       </View>
 
+      {/* Popular Barbers */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Öne Çıkan Berberler</Text>
+          <Text style={styles.sectionTitle}>Popüler Kuaförler</Text>
           <TouchableOpacity onPress={() => router.push('/barbers')}>
             <Text style={styles.seeAllButton}>Tümünü Gör</Text>
-        </TouchableOpacity>
+          </TouchableOpacity>
         </View>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.featuredBarbersContainer}
-        >
-          {featuredBarbers.map((barber) => (
-        <TouchableOpacity 
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.barbersList}>
+          {popularBarbers.map((barber) => (
+            <TouchableOpacity
               key={barber.id}
               style={styles.barberCard}
               onPress={() => router.push(`/barber/${barber.id}`)}
             >
               <Image
-                source={DEFAULT_IMAGES.barber}
+                source={barber.photoURL || DEFAULT_IMAGES.barber}
                 style={styles.barberImage}
-                resizeMode="cover"
               />
               <View style={styles.barberInfo}>
-                <Text style={styles.barberName}>{barber.name}</Text>
-                <View style={styles.barberRating}>
+                <Text style={styles.barberName}>
+                  {barber.firstName} {barber.lastName}
+                </Text>
+                <View style={styles.ratingContainer}>
                   <Ionicons name="star" size={16} color={theme.colors.warning} />
                   <Text style={styles.ratingText}>
-                    {barber.rating.toFixed(1)} ({barber.reviews})
+                    {barber.stats?.averageRating.toFixed(1) || barber.rating.toFixed(1)}
+                  </Text>
+                  <Text style={styles.reviewCount}>
+                    ({barber.stats?.totalReviews || barber.reviews})
                   </Text>
                 </View>
-                <Text style={styles.barberLocation}>{barber.location}</Text>
                 <Text style={styles.workingHours}>
                   {getWorkingHours(barber.workingHours)}
                 </Text>
@@ -189,40 +239,49 @@ export default function HomeScreen() {
         </ScrollView>
       </View>
 
+      {/* Recent Barbers Section */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Son Eklenen Berberler</Text>
+          <Text style={styles.sectionTitle}>Son Eklenen Kuaförler</Text>
           <TouchableOpacity onPress={() => router.push('/barbers')}>
             <Text style={styles.seeAllButton}>Tümünü Gör</Text>
-        </TouchableOpacity>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.recentBarbersContainer}>
           {recentBarbers.map((barber) => (
-        <TouchableOpacity 
+            <TouchableOpacity 
               key={barber.id}
               style={styles.recentBarberCard}
               onPress={() => router.push(`/barber/${barber.id}`)}
             >
               <Image
-                source={{ uri: barber.image }}
+                source={{ uri: barber.photoURL }}
                 style={styles.recentBarberImage}
                 resizeMode="cover"
               />
               <View style={styles.recentBarberInfo}>
-                <Text style={styles.recentBarberName}>{barber.name}</Text>
+                <Text style={styles.recentBarberName}>
+                  {barber.firstName} {barber.lastName}
+                </Text>
                 <View style={styles.recentBarberRating}>
-                  <Ionicons name="star" size={16} color={theme.colors.warning} />
+                <Ionicons name="star" size={16} color={theme.colors.warning} />
                   <Text style={styles.recentRatingText}>
-                    {barber.rating.toFixed(1)} ({barber.reviews})
+                    {barber.stats?.averageRating.toFixed(1) || '0.0'} ({barber.stats?.totalReviews || 0})
                   </Text>
                 </View>
-                <Text style={styles.recentBarberLocation}>{barber.location}</Text>
-                <Text style={styles.recentWorkingHours}>
-                  {getWorkingHours(barber.workingHours)}
-                </Text>
+                <View style={styles.recentBarberLocation}>
+                <Ionicons name="location" size={16} color={theme.colors.textSecondary} />
+                  <Text style={styles.recentLocationText}>{barber.address}</Text>
+                </View>
+                <View style={styles.recentBarberHours}>
+                <Ionicons name="time" size={16} color={theme.colors.textSecondary} />
+                  <Text style={styles.recentHoursText}>
+                    {getWorkingHours(barber.workingHours)}
+                  </Text>
+                </View>
               </View>
-        </TouchableOpacity>
+            </TouchableOpacity>
           ))}
         </View>
       </View>
@@ -253,34 +312,32 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: theme.spacing.xl,
+    padding: 20,
   },
   heroTitle: {
-    ...theme.typography.h1,
-    color: theme.colors.surface,
-    marginBottom: theme.spacing.md,
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#fff',
+    textAlign: 'center',
+    marginBottom: 10,
     textShadowColor: 'rgba(0, 0, 0, 0.75)',
     textShadowOffset: { width: 2, height: 2 },
     textShadowRadius: 4,
-    fontSize: 32,
-    fontWeight: 'bold',
   },
   heroSubtitle: {
-    ...theme.typography.body,
-    color: theme.colors.surface,
+    fontSize: 18,
+    color: '#fff',
     textAlign: 'center',
+    marginBottom: 20,
     textShadowColor: 'rgba(0, 0, 0, 0.75)',
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 3,
-    fontSize: 18,
-    marginBottom: theme.spacing.xl,
   },
   loginButton: {
-    marginTop: theme.spacing.lg,
     backgroundColor: theme.colors.primary,
-    paddingHorizontal: theme.spacing.xl,
-    paddingVertical: theme.spacing.md,
-    borderRadius: theme.borderRadius.lg,
+    paddingHorizontal: 30,
+    paddingVertical: 12,
+    borderRadius: 8,
     elevation: 3,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -288,61 +345,103 @@ const styles = StyleSheet.create({
     shadowRadius: 3.84,
   },
   loginButtonText: {
-    ...theme.typography.button,
-    color: theme.colors.surface,
+    color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
   },
   searchContainer: {
-    padding: theme.spacing.lg,
+    padding: 16,
     backgroundColor: theme.colors.background,
   },
   searchInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: theme.colors.surface,
-    borderRadius: theme.borderRadius.lg,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: theme.colors.border,
-    paddingHorizontal: theme.spacing.md,
+    paddingHorizontal: 12,
   },
   searchIcon: {
-    marginRight: theme.spacing.sm,
+    marginRight: 8,
   },
   searchInput: {
     flex: 1,
     height: 48,
-    ...theme.typography.body,
+    fontSize: 16,
+    color: theme.colors.text,
+  },
+  filterButton: {
+    padding: 8,
+  },
+  filtersContainer: {
+    marginTop: 12,
+    backgroundColor: theme.colors.surface,
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  filterRow: {
+    marginBottom: 12,
+  },
+  filterLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: theme.colors.text,
+    marginBottom: 8,
+  },
+  filterOptions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  filterOption: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: theme.colors.background,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  filterOptionSelected: {
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary,
+  },
+  filterOptionText: {
+    fontSize: 14,
+    color: theme.colors.text,
+  },
+  filterOptionTextSelected: {
+    color: '#fff',
   },
   section: {
-    marginBottom: theme.spacing.xl,
-    paddingHorizontal: theme.spacing.lg,
+    marginBottom: 24,
+    paddingHorizontal: 16,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: theme.spacing.lg,
+    marginBottom: 16,
   },
   sectionTitle: {
-    ...theme.typography.h2,
-    color: theme.colors.text,
     fontSize: 24,
     fontWeight: 'bold',
+    color: theme.colors.text,
   },
   seeAllButton: {
-    ...theme.typography.bodySmall,
-    color: theme.colors.primary,
     fontSize: 14,
+    color: theme.colors.primary,
   },
-  featuredBarbersContainer: {
-    paddingHorizontal: theme.spacing.lg,
-    gap: theme.spacing.md,
+  barbersList: {
+    paddingRight: 16,
+    gap: 16,
   },
   barberCard: {
-    width: 300,
+    width: width * 0.8,
     backgroundColor: theme.colors.surface,
-    borderRadius: theme.borderRadius.lg,
+    borderRadius: 12,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: theme.colors.border,
@@ -357,45 +456,41 @@ const styles = StyleSheet.create({
     height: 200,
   },
   barberInfo: {
-    padding: theme.spacing.lg,
+    padding: 16,
   },
   barberName: {
-    ...theme.typography.h3,
-    color: theme.colors.text,
-    marginBottom: theme.spacing.xs,
     fontSize: 20,
     fontWeight: 'bold',
+    color: theme.colors.text,
+    marginBottom: 8,
   },
-  barberRating: {
+  ratingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: theme.spacing.xs,
+    marginBottom: 8,
   },
   ratingText: {
-    ...theme.typography.bodySmall,
-    color: theme.colors.textSecondary,
-    marginLeft: theme.spacing.xs,
+    marginLeft: 4,
     fontSize: 14,
+    color: theme.colors.textSecondary,
   },
-  barberLocation: {
-    ...theme.typography.bodySmall,
-    color: theme.colors.textSecondary,
-    marginBottom: theme.spacing.xs,
+  reviewCount: {
+    marginLeft: 4,
     fontSize: 14,
+    color: theme.colors.textSecondary,
   },
   workingHours: {
-    ...theme.typography.bodySmall,
-    color: theme.colors.textSecondary,
+    marginTop: 8,
     fontSize: 14,
+    color: theme.colors.textSecondary,
   },
   recentBarbersContainer: {
-    paddingHorizontal: theme.spacing.lg,
-    gap: theme.spacing.md,
+    gap: 16,
   },
   recentBarberCard: {
     flexDirection: 'row',
     backgroundColor: theme.colors.surface,
-    borderRadius: theme.borderRadius.lg,
+    borderRadius: 12,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: theme.colors.border,
@@ -406,30 +501,41 @@ const styles = StyleSheet.create({
   },
   recentBarberInfo: {
     flex: 1,
-    padding: theme.spacing.md,
+    padding: 12,
   },
   recentBarberName: {
-    ...theme.typography.h3,
+    fontSize: 16,
+    fontWeight: 'bold',
     color: theme.colors.text,
-    marginBottom: theme.spacing.xs,
+    marginBottom: 4,
   },
   recentBarberRating: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: theme.spacing.xs,
+    marginBottom: 4,
   },
   recentRatingText: {
-    ...theme.typography.bodySmall,
+    marginLeft: 4,
+    fontSize: 14,
     color: theme.colors.textSecondary,
-    marginLeft: theme.spacing.xs,
   },
   recentBarberLocation: {
-    ...theme.typography.bodySmall,
-    color: theme.colors.textSecondary,
-    marginBottom: theme.spacing.xs,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
   },
-  recentWorkingHours: {
-    ...theme.typography.bodySmall,
+  recentLocationText: {
+    marginLeft: 4,
+    fontSize: 14,
+    color: theme.colors.textSecondary,
+  },
+  recentBarberHours: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  recentHoursText: {
+    marginLeft: 4,
+    fontSize: 14,
     color: theme.colors.textSecondary,
   },
 });

@@ -20,7 +20,9 @@ type ButtonStyle = {
 type ThemeType = {
   colors: {
     primary: string;
+    primaryForeground: string;
     secondary: string;
+    secondaryForeground: string;
     accent: string;
     background: string;
     card: string;
@@ -36,6 +38,17 @@ type ThemeType = {
     divider: string;
     overlay: string;
     backdrop: string;
+    destructive: string;
+    destructiveForeground: string;
+    gradient: {
+      primary: string[];
+      secondary: string[];
+    };
+    shadow: {
+      light: string;
+      medium: string;
+      dark: string;
+    };
   };
   spacing: {
     xs: number;
@@ -65,6 +78,21 @@ type ThemeType = {
     bodySmall: TypographyStyle;
     caption: TypographyStyle;
     button: TypographyStyle;
+    fontFamily: {
+      regular: string;
+      medium: string;
+      bold: string;
+    };
+    fontSize: {
+      xs: number;
+      sm: number;
+      base: number;
+      lg: number;
+      xl: number;
+      '2xl': number;
+      '3xl': number;
+      '4xl': number;
+    };
   };
   shadows: {
     sm: { shadowColor: string; shadowOffset: { width: number; height: number }; shadowOpacity: number; shadowRadius: number; elevation: number };
@@ -85,47 +113,141 @@ type ThemeType = {
 
 export const theme: ThemeType = {
   colors: {
-    // Web ile uyumlu ana renkler
-    primary: '#4f46e5', // Web: --primary
-    secondary: '#f3f4f6', // Web: --secondary
-    accent: '#f59e0b', // Web: --accent
-
+    // Ana renkler
+    primary: '#6366f1', // indigo-500
+    primaryForeground: '#ffffff',
+    secondary: '#1f2937', // zinc-800
+    secondaryForeground: '#f3f4f6', // zinc-100
+    accent: '#f59e0b', // amber-500
+    
     // Arka plan renkleri
-    background: '#ffffff', // Web: --background
-    card: '#ffffff', // Web: --card
-    surface: '#f3f4f6', // Web: --secondary
-
+    background: '#111827', // gray-900
+    surface: '#1f2937', // gray-800
+    card: '#1f2937', // gray-800
+    
     // Metin renkleri
-    text: '#171717', // Web: --foreground
-    textSecondary: '#6b7280', // Web: --muted-foreground
-    textMuted: '#9ca3af', // Web koyu: --muted-foreground
-
-    // Durum renkleri
-    success: '#22C55E',
-    warning: '#F59E0B',
-    error: '#EF4444',
-    info: '#3B82F6',
-
+    text: '#f3f4f6', // zinc-100
+    textSecondary: '#9ca3af', // zinc-400
+    textMuted: '#6b7280', // zinc-500
+    
     // Kenarlık ve ayırıcı renkleri
-    border: '#e5e7eb', // Web: --border
-    divider: '#e5e7eb', // Web: --border
-
+    border: '#374151', // gray-700
+    divider: '#374151', // gray-700
+    
+    // Durum renkleri
+    success: '#22c55e', // green-500
+    warning: '#f59e0b', // amber-500
+    error: '#ef4444', // red-500
+    info: '#3b82f6', // blue-500
+    
+    // Özel renkler
+    destructive: '#ef4444', // red-500
+    destructiveForeground: '#ffffff',
+    
     // Overlay renkleri
-    overlay: 'rgba(0, 0, 0, 0.5)',
-    backdrop: 'rgba(23, 23, 23, 0.3)',
+    overlay: 'rgba(0, 0, 0, 0.7)',
+    backdrop: 'rgba(17, 24, 39, 0.7)',
+    
+    // Gradient renkleri
+    gradient: {
+      primary: ['#6366f1', '#4f46e5'], // indigo-500 to indigo-600
+      secondary: ['#1f2937', '#111827'], // gray-800 to gray-900
+    },
+    
+    // Gölge renkleri
+    shadow: {
+      light: 'rgba(0, 0, 0, 0.3)',
+      medium: 'rgba(0, 0, 0, 0.4)',
+      dark: 'rgba(0, 0, 0, 0.5)',
+    },
   },
-
+  
+  // Tipografi
+  typography: {
+    h1: {
+      fontSize: 32,
+      fontWeight: '700',
+      lineHeight: 40,
+      color: '#f3f4f6',
+      fontFamily: 'System',
+    },
+    h2: {
+      fontSize: 24,
+      fontWeight: '700',
+      lineHeight: 32,
+      color: '#f3f4f6',
+      fontFamily: 'System',
+    },
+    h3: {
+      fontSize: 20,
+      fontWeight: '600',
+      lineHeight: 28,
+      color: '#f3f4f6',
+      fontFamily: 'System',
+    },
+    h4: {
+      fontSize: 18,
+      fontWeight: '600',
+      lineHeight: 24,
+      color: '#f3f4f6',
+      fontFamily: 'System',
+    },
+    body: {
+      fontSize: 16,
+      fontWeight: '400',
+      lineHeight: 24,
+      color: '#9ca3af',
+      fontFamily: 'System',
+    },
+    bodySmall: {
+      fontSize: 14,
+      fontWeight: '400',
+      lineHeight: 20,
+      color: '#9ca3af',
+      fontFamily: 'System',
+    },
+    caption: {
+      fontSize: 12,
+      fontWeight: '400',
+      lineHeight: 16,
+      color: '#6b7280',
+      fontFamily: 'System',
+    },
+    button: {
+      fontSize: 16,
+      fontWeight: '600',
+      lineHeight: 24,
+      color: '#FFFFFF',
+      fontFamily: 'System',
+    },
+    fontFamily: {
+      regular: 'System',
+      medium: 'System',
+      bold: 'System',
+    },
+    fontSize: {
+      xs: 12,
+      sm: 14,
+      base: 16,
+      lg: 18,
+      xl: 20,
+      '2xl': 24,
+      '3xl': 30,
+      '4xl': 36,
+    },
+  },
+  
+  // Boşluk ve kenar yuvarlaklığı
   spacing: {
     xs: 4,
     sm: 8,
-    md: 12,
-    lg: 16,
-    xl: 24,
-    '2xl': 32,
-    '3xl': 48,
-    '4xl': 64,
+    md: 16,
+    lg: 24,
+    xl: 32,
+    '2xl': 48,
+    '3xl': 64,
+    '4xl': 80,
   },
-
   borderRadius: {
     none: 0,
     sm: 4,
@@ -135,93 +257,26 @@ export const theme: ThemeType = {
     '2xl': 24,
     full: 9999,
   },
-
-  typography: {
-    h1: {
-      fontSize: 32,
-      fontWeight: '700',
-      lineHeight: 40,
-      color: '#0F172A',
-      fontFamily: 'Inter',
-    },
-    h2: {
-      fontSize: 24,
-      fontWeight: '700',
-      lineHeight: 32,
-      color: '#0F172A',
-      fontFamily: 'Inter',
-    },
-    h3: {
-      fontSize: 20,
-      fontWeight: '600',
-      lineHeight: 28,
-      color: '#0F172A',
-      fontFamily: 'Inter',
-    },
-    h4: {
-      fontSize: 18,
-      fontWeight: '600',
-      lineHeight: 24,
-      color: '#0F172A',
-      fontFamily: 'Inter',
-    },
-    body: {
-      fontSize: 16,
-      fontWeight: '400',
-      lineHeight: 24,
-      color: '#475569',
-      fontFamily: 'Inter',
-    },
-    bodySmall: {
-      fontSize: 14,
-      fontWeight: '400',
-      lineHeight: 20,
-      color: '#475569',
-      fontFamily: 'Inter',
-    },
-    caption: {
-      fontSize: 12,
-      fontWeight: '400',
-      lineHeight: 16,
-      color: '#64748B',
-      fontFamily: 'Inter',
-    },
-    button: {
-      fontSize: 16,
-      fontWeight: '600',
-      lineHeight: 24,
-      color: '#FFFFFF',
-      fontFamily: 'Inter',
-    },
-  },
-
+  
+  // Gölgeler
   shadows: {
     sm: {
       shadowColor: '#000',
-      shadowOffset: {
-        width: 0,
-        height: 1,
-      },
+      shadowOffset: { width: 0, height: 1 },
       shadowOpacity: 0.18,
       shadowRadius: 1.0,
       elevation: 1,
     },
     md: {
       shadowColor: '#000',
-      shadowOffset: {
-        width: 0,
-        height: 2,
-      },
+      shadowOffset: { width: 0, height: 2 },
       shadowOpacity: 0.25,
       shadowRadius: 3.84,
       elevation: 3,
     },
     lg: {
       shadowColor: '#000',
-      shadowOffset: {
-        width: 0,
-        height: 4,
-      },
+      shadowOffset: { width: 0, height: 4 },
       shadowOpacity: 0.30,
       shadowRadius: 4.65,
       elevation: 5,
@@ -241,28 +296,28 @@ export const theme: ThemeType = {
 
   buttons: {
     primary: {
-      backgroundColor: '#4f46e5', // Web: --primary
-      borderColor: '#4f46e5',
+      backgroundColor: '#6366f1',
+      borderColor: '#6366f1',
       borderWidth: 1,
-      textColor: '#ffffff', // Web: --primary-foreground
+      textColor: '#ffffff',
     },
     secondary: {
-      backgroundColor: '#f3f4f6', // Web: --secondary
-      borderColor: '#f3f4f6',
+      backgroundColor: '#1f2937',
+      borderColor: '#1f2937',
       borderWidth: 1,
-      textColor: '#1f2937', // Web: --secondary-foreground
+      textColor: '#f3f4f6',
     },
     outline: {
       backgroundColor: 'transparent',
-      borderColor: '#4f46e5', // Web: --primary
+      borderColor: '#6366f1',
       borderWidth: 1,
-      textColor: '#4f46e5',
+      textColor: '#6366f1',
     },
     ghost: {
       backgroundColor: 'transparent',
       borderColor: 'transparent',
       borderWidth: 0,
-      textColor: '#4f46e5',
+      textColor: '#6366f1',
     },
   },
 };

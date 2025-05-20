@@ -4,15 +4,15 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { auth, db } from '@/config/firebase';
 import { doc, getDoc, updateDoc, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
-import { updateProfile, onAuthStateChanged } from 'firebase/auth';
+import { updateProfile, onAuthStateChanged, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
 import { User, Calendar, Bell, Lock, Edit2, X, Check, Menu, LogOut, Loader2, MapPin, Phone, Mail, Clock, Home } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import Image from 'next/image';
-import { Appointment } from '@/types/appointment';
-import { format } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 import { tr } from 'date-fns/locale';
 import FavoriteBarbers from '@/components/common/FavoriteBarbers';
 import Link from 'next/link';
+import { EmailAuthProvider } from 'firebase/auth';
 
 interface CustomerProfile {
   name: string;
@@ -22,11 +22,48 @@ interface CustomerProfile {
   photoURL: string;
 }
 
+interface Appointment {
+  id: string;
+  userId: string;
+  barberId: string;
+  employeeId: string;
+  barberName: string;
+  employeeName: string;
+  service: string;
+  serviceName: string;
+  date: string;
+  time: string;
+  price: number;
+  duration: number;
+  status: 'pending' | 'confirmed' | 'cancelled' | 'rejected' | 'completed';
+  createdAt: any;
+}
+
+interface Statistics {
+  totalAppointments: number;
+  monthlyAppointments: number;
+  lastAppointment: {
+    date: string;
+    service: string;
+  } | null;
+}
+
 export default function CustomerProfile() {
   const [profile, setProfile] = useState<CustomerProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [recentAppointments, setRecentAppointments] = useState<Appointment[]>([]);
+  const [statistics, setStatistics] = useState<Statistics>({
+    totalAppointments: 0,
+    monthlyAppointments: 0,
+    lastAppointment: null
+  });
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  });
+  const [passwordError, setPasswordError] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -67,6 +104,40 @@ export default function CustomerProfile() {
           })) as Appointment[];
 
           setRecentAppointments(appointmentsData);
+
+          // Fetch all appointments for statistics
+          const allAppointmentsQuery = query(
+            appointmentsRef,
+            where('userId', '==', user.uid)
+          );
+          const allAppointmentsSnapshot = await getDocs(allAppointmentsQuery);
+          const allAppointments = allAppointmentsSnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          })) as Appointment[];
+
+          // Calculate statistics
+          const now = new Date();
+          const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+          
+          const monthlyAppointments = allAppointments.filter(appointment => {
+            const appointmentDate = new Date(appointment.date);
+            return appointmentDate >= firstDayOfMonth;
+          }).length;
+
+          const lastAppointment = allAppointments.length > 0 
+            ? {
+                date: formatDistanceToNow(new Date(allAppointments[0].date), { locale: tr, addSuffix: true }),
+                service: allAppointments[0].serviceName || allAppointments[0].service
+              }
+            : null;
+
+          setStatistics({
+            totalAppointments: allAppointments.length,
+            monthlyAppointments,
+            lastAppointment
+          });
+
         } else {
           router.push('/');
         }
@@ -92,6 +163,14 @@ export default function CustomerProfile() {
     }
   };
 
+  const handlePasswordChange = (field: keyof typeof passwordData, value: string) => {
+    setPasswordData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+    setPasswordError(null);
+  };
+
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!profile) return;
@@ -101,6 +180,35 @@ export default function CustomerProfile() {
       const user = auth.currentUser;
       if (!user) throw new Error('Kullanıcı bulunamadı');
 
+      // Şifre güncelleme kontrolü
+      if (passwordData.newPassword) {
+        if (passwordData.newPassword !== passwordData.confirmPassword) {
+          setPasswordError('Yeni şifreler eşleşmiyor');
+          setLoading(false);
+          return;
+        }
+
+        if (passwordData.newPassword.length < 6) {
+          setPasswordError('Şifre en az 6 karakter olmalıdır');
+          setLoading(false);
+          return;
+        }
+
+        // Mevcut şifreyi kontrol et ve yeni şifreyi güncelle
+        try {
+          const credential = EmailAuthProvider.credential(
+            user.email!,
+            passwordData.currentPassword
+          );
+          await reauthenticateWithCredential(user, credential);
+          await updatePassword(user, passwordData.newPassword);
+        } catch (error) {
+          setPasswordError('Mevcut şifre yanlış');
+          setLoading(false);
+          return;
+        }
+      }
+
       const docRef = doc(db, 'users', user.uid);
       await updateDoc(docRef, {
         ...profile,
@@ -109,6 +217,11 @@ export default function CustomerProfile() {
 
       toast.success('Profil başarıyla güncellendi');
       setEditing(false);
+      setPasswordData({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: ''
+      });
     } catch (error) {
       console.error('Error updating profile:', error);
       toast.error('Profil güncellenirken bir hata oluştu');
@@ -173,7 +286,7 @@ export default function CustomerProfile() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="container py-8">
+      <div className="container max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
         <div className="mb-6 flex items-center justify-between">
           <h1 className="text-2xl font-bold">Müşteri Profili</h1>
           <div className="flex items-center space-x-4">
@@ -246,11 +359,56 @@ export default function CustomerProfile() {
                           rows={3}
                         />
                       </div>
+
+                      {/* Şifre Güncelleme Alanı */}
+                      <div className="border-t pt-4 mt-4">
+                        <h3 className="text-sm font-medium mb-4">Şifre Güncelle</h3>
+                        <div className="space-y-4">
+                          <div>
+                            <label className="text-sm font-medium">Mevcut Şifre</label>
+                            <input
+                              type="password"
+                              value={passwordData.currentPassword}
+                              onChange={(e) => handlePasswordChange('currentPassword', e.target.value)}
+                              className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-sm font-medium">Yeni Şifre</label>
+                            <input
+                              type="password"
+                              value={passwordData.newPassword}
+                              onChange={(e) => handlePasswordChange('newPassword', e.target.value)}
+                              className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-sm font-medium">Yeni Şifre (Tekrar)</label>
+                            <input
+                              type="password"
+                              value={passwordData.confirmPassword}
+                              onChange={(e) => handlePasswordChange('confirmPassword', e.target.value)}
+                              className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                            />
+                          </div>
+                          {passwordError && (
+                            <p className="text-sm text-destructive">{passwordError}</p>
+                          )}
+                        </div>
+                      </div>
                     </div>
                     <div className="flex justify-end space-x-2">
                       <button
                         type="button"
-                        onClick={() => setEditing(false)}
+                        onClick={() => {
+                          setEditing(false);
+                          setPasswordData({
+                            currentPassword: '',
+                            newPassword: '',
+                            confirmPassword: ''
+                          });
+                          setPasswordError(null);
+                        }}
                         className="rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground"
                       >
                         İptal
@@ -336,9 +494,9 @@ export default function CustomerProfile() {
                   <Calendar className="h-5 w-5 text-primary" />
                   <h3 className="text-lg font-semibold">Toplam Randevu</h3>
                 </div>
-                <p className="mt-2 text-3xl font-bold">12</p>
+                <p className="mt-2 text-3xl font-bold">{statistics.totalAppointments}</p>
                 <p className="text-sm text-muted-foreground">
-                  Bu ay 3 randevu
+                  Bu ay {statistics.monthlyAppointments} randevu
                 </p>
               </div>
 
@@ -347,10 +505,21 @@ export default function CustomerProfile() {
                   <Clock className="h-5 w-5 text-primary" />
                   <h3 className="text-lg font-semibold">Son Randevu</h3>
                 </div>
-                <p className="mt-2 text-3xl font-bold">2 gün önce</p>
-                <p className="text-sm text-muted-foreground">
-                  Saç Kesimi
-                </p>
+                {statistics.lastAppointment ? (
+                  <>
+                    <p className="mt-2 text-3xl font-bold">{statistics.lastAppointment.date}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {statistics.lastAppointment.service}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="mt-2 text-3xl font-bold">-</p>
+                    <p className="text-sm text-muted-foreground">
+                      Henüz randevu yok
+                    </p>
+                  </>
+                )}
               </div>
             </div>
 

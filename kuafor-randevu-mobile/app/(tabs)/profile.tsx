@@ -9,57 +9,59 @@ import {
   Alert,
   ActivityIndicator,
   TextInput,
-  Switch,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { theme } from '@/utils/theme';
 import { Ionicons } from '@expo/vector-icons';
 import { auth, db } from '@/config/firebase';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import { signOut, updateProfile } from 'firebase/auth';
+import { doc, getDoc, updateDoc, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
+import { updateProfile } from 'firebase/auth';
 
-interface BarberProfile {
-  firstName: string;
-  lastName: string;
+interface CustomerProfile {
+  name: string;
   email: string;
   phone: string;
-  role: 'barber';
   address: string;
-  barberType: string;
-  workingHours: {
-    [key: string]: { start: string; end: string; isClosed?: boolean };
-  };
-  services: Array<{
-    name: string;
-    price: number;
-    duration: number;
-  }>;
-  rating?: number;
+  photoURL: string;
 }
 
-export default function ProfileScreen() {
-  const [profile, setProfile] = useState<BarberProfile | null>(null);
+interface Appointment {
+  id: string;
+  userId: string;
+  barberId: string;
+  employeeId: string;
+  barberName: string;
+  employeeName: string;
+  service: string;
+  serviceName: string;
+  date: string;
+  time: string;
+  price: number;
+  duration: number;
+  status: 'pending' | 'confirmed' | 'cancelled' | 'rejected' | 'completed';
+  createdAt: any;
+}
+
+interface Statistics {
+  totalAppointments: number;
+  monthlyAppointments: number;
+  lastAppointment: {
+    date: string;
+    service: string;
+  } | null;
+}
+
+export default function CustomerProfile() {
+  const [profile, setProfile] = useState<CustomerProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [editingServices, setEditingServices] = useState(false);
-  const [editingWorkingHours, setEditingWorkingHours] = useState(false);
-  const [editingProfile, setEditingProfile] = useState(false);
-  const [newService, setNewService] = useState({
-    name: '',
-    price: 0,
-    duration: 30
+  const [editing, setEditing] = useState(false);
+  const [recentAppointments, setRecentAppointments] = useState<Appointment[]>([]);
+  const [statistics, setStatistics] = useState<Statistics>({
+    totalAppointments: 0,
+    monthlyAppointments: 0,
+    lastAppointment: null
   });
   const router = useRouter();
-
-  // Varsayılan çalışma saatleri
-  const defaultWorkingHours = {
-    'Pazartesi': { start: '09:00', end: '18:00', isClosed: false },
-    'Salı': { start: '09:00', end: '18:00', isClosed: false },
-    'Çarşamba': { start: '09:00', end: '18:00', isClosed: false },
-    'Perşembe': { start: '09:00', end: '18:00', isClosed: false },
-    'Cuma': { start: '09:00', end: '18:00', isClosed: false },
-    'Cumartesi': { start: '10:00', end: '16:00', isClosed: false },
-    'Pazar': { start: '00:00', end: '00:00', isClosed: true }
-  };
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -70,31 +72,73 @@ export default function ProfileScreen() {
 
       try {
         const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
-        if (userDoc.exists() && userDoc.data().role === 'barber') {
+        if (userDoc.exists() && userDoc.data().role === 'customer') {
           const userData = userDoc.data();
-          // Firestore verilerini kullanarak profil oluştur
-          const barberProfile: BarberProfile = {
-            firstName: userData.firstName || '',
-            lastName: userData.lastName || '',
+          const defaultProfile: CustomerProfile = {
+            name: userData.name || userData.displayName || '',
             email: userData.email || auth.currentUser.email || '',
             phone: userData.phone || '',
-            role: 'barber',
             address: userData.address || '',
-            barberType: userData.barberType || 'male',
-            workingHours: userData.workingHours || defaultWorkingHours,
-            services: userData.services || [],
-            rating: userData.rating || 0
+            photoURL: userData.photoURL || require('@/assets/images/default-customer.jpg')
           };
-          setProfile(barberProfile);
-        } else if (userDoc.exists() && userDoc.data().role === 'customer') {
-          // Müşteri profil sayfasına yönlendir
-          router.replace('/customer/profile');
+          setProfile(defaultProfile);
+
+          // Fetch recent appointments
+          const appointmentsRef = collection(db, 'appointments');
+          const q = query(
+            appointmentsRef,
+            where('userId', '==', auth.currentUser.uid),
+            orderBy('createdAt', 'desc'),
+            limit(3)
+          );
+
+          const querySnapshot = await getDocs(q);
+          const appointmentsData = querySnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          })) as Appointment[];
+
+          setRecentAppointments(appointmentsData);
+
+          // Fetch all appointments for statistics
+          const allAppointmentsQuery = query(
+            appointmentsRef,
+            where('userId', '==', auth.currentUser.uid)
+          );
+          const allAppointmentsSnapshot = await getDocs(allAppointmentsQuery);
+          const allAppointments = allAppointmentsSnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          })) as Appointment[];
+
+          // Calculate statistics
+          const now = new Date();
+          const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+          
+          const monthlyAppointments = allAppointments.filter(appointment => {
+            const appointmentDate = new Date(appointment.date);
+            return appointmentDate >= firstDayOfMonth;
+          }).length;
+
+          const lastAppointment = allAppointments.length > 0 
+            ? {
+                date: allAppointments[0].date,
+                service: allAppointments[0].serviceName || allAppointments[0].service
+              }
+            : null;
+
+          setStatistics({
+            totalAppointments: allAppointments.length,
+            monthlyAppointments,
+            lastAppointment
+          });
+
         } else {
           router.replace('/');
         }
       } catch (error) {
-        console.error('Error fetching user data:', error);
-        Alert.alert('Hata', 'Kullanıcı bilgileri alınamadı');
+        console.error('Error fetching profile:', error);
+        Alert.alert('Hata', 'Profil bilgileri yüklenirken bir hata oluştu');
       } finally {
         setLoading(false);
       }
@@ -103,9 +147,9 @@ export default function ProfileScreen() {
     checkAuth();
   }, []);
 
-  const handleLogout = async () => {
+  const handleSignOut = async () => {
     try {
-      await signOut(auth);
+      await auth.signOut();
       router.replace('/');
     } catch (error) {
       Alert.alert('Hata', 'Çıkış yapılırken bir hata oluştu');
@@ -113,190 +157,65 @@ export default function ProfileScreen() {
   };
 
   const handleUpdateProfile = async () => {
-    if (!auth.currentUser || !profile) return;
+    if (!profile) return;
 
+    setLoading(true);
     try {
-      await updateDoc(doc(db, 'users', auth.currentUser.uid), {
-        firstName: profile.firstName,
-        lastName: profile.lastName,
-        phone: profile.phone,
-        address: profile.address,
-        workingHours: profile.workingHours,
-        services: profile.services
+      const user = auth.currentUser;
+      if (!user) throw new Error('Kullanıcı bulunamadı');
+
+      const docRef = doc(db, 'users', user.uid);
+      await updateDoc(docRef, {
+        ...profile,
+        updatedAt: new Date().toISOString(),
       });
 
-      if (auth.currentUser) {
-        await updateProfile(auth.currentUser, {
-          displayName: `${profile.firstName} ${profile.lastName}`
-        });
-      }
-
-      Alert.alert('Başarılı', 'Profil bilgileri güncellendi');
-      setEditingProfile(false);
-      setEditingServices(false);
-      setEditingWorkingHours(false);
+      Alert.alert('Başarılı', 'Profil başarıyla güncellendi');
+      setEditing(false);
     } catch (error) {
       console.error('Error updating profile:', error);
       Alert.alert('Hata', 'Profil güncellenirken bir hata oluştu');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleProfileChange = (field: string, value: string) => {
+  const handleProfileChange = (field: keyof CustomerProfile, value: string) => {
     if (!profile) return;
-    
     setProfile({
       ...profile,
       [field]: value
     });
   };
 
-  const handleWorkingHourChange = (day: string, field: 'start' | 'end', value: string) => {
-    if (!profile) return;
-    
-    setProfile({
-      ...profile,
-      workingHours: {
-        ...profile.workingHours,
-        [day]: {
-          ...profile.workingHours[day],
-          [field]: value
-        }
-      }
-    });
-  };
-
-  const toggleClosedDay = (day: string) => {
-    if (!profile) return;
-    
-    setProfile({
-      ...profile,
-      workingHours: {
-        ...profile.workingHours,
-        [day]: {
-          ...profile.workingHours[day],
-          isClosed: !profile.workingHours[day].isClosed
-        }
-      }
-    });
-  };
-
-  const handleAddService = () => {
-    if (!profile || !newService.name) return;
-    
-    if (isNaN(newService.price) || newService.price <= 0) {
-      Alert.alert('Hata', 'Geçerli bir ücret girin');
-      return;
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'pending':
+        return theme.colors.warning;
+      case 'confirmed':
+        return theme.colors.primary;
+      case 'completed':
+        return theme.colors.success;
+      case 'cancelled':
+        return theme.colors.destructive;
+      default:
+        return theme.colors.textSecondary;
     }
+  };
 
-    if (isNaN(newService.duration) || newService.duration <= 0) {
-      Alert.alert('Hata', 'Geçerli bir süre girin');
-      return;
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case 'pending':
+        return 'Beklemede';
+      case 'confirmed':
+        return 'Onaylandı';
+      case 'completed':
+        return 'Tamamlandı';
+      case 'cancelled':
+        return 'İptal Edildi';
+      default:
+        return status;
     }
-
-    setProfile({
-      ...profile,
-      services: [
-        ...profile.services,
-        {
-          name: newService.name,
-          price: newService.price,
-          duration: newService.duration
-        }
-      ]
-    });
-
-    setNewService({
-      name: '',
-      price: 0,
-      duration: 30
-    });
-  };
-
-  const handleRemoveService = (index: number) => {
-    if (!profile) return;
-    
-    const updatedServices = [...profile.services];
-    updatedServices.splice(index, 1);
-    
-    setProfile({
-      ...profile,
-      services: updatedServices
-    });
-  };
-
-  const renderWorkingHours = () => {
-    if (!profile?.workingHours) return null;
-
-    const days = [
-      'Pazartesi',
-      'Salı',
-      'Çarşamba',
-      'Perşembe',
-      'Cuma',
-      'Cumartesi',
-      'Pazar'
-    ];
-
-    return days.map((day) => {
-      const hours = profile.workingHours[day];
-      
-      if (!hours) {
-        return (
-          <View key={day} style={styles.workingHourItem}>
-            <Text style={styles.workingHourDay}>{day}</Text>
-            <Text style={styles.workingHourTime}>Tanımlanmamış</Text>
-          </View>
-        );
-      }
-
-      const isClosed = hours.isClosed === undefined ? false : hours.isClosed;
-      const timeText = isClosed ? 'Kapalı' : `${hours.start} - ${hours.end}`;
-
-      if (editingWorkingHours) {
-        return (
-          <View key={day} style={styles.workingHourEditItem}>
-            <View style={styles.workingHourEditDay}>
-              <Text style={styles.workingHourDay}>{day}</Text>
-              <View style={styles.closedSwitch}>
-                <Text style={styles.closedText}>Kapalı</Text>
-                <Switch
-                  value={isClosed}
-                  onValueChange={() => toggleClosedDay(day)}
-                  trackColor={{ false: theme.colors.border, true: theme.colors.primary }}
-                  thumbColor={theme.colors.surface}
-                />
-              </View>
-            </View>
-            {!isClosed && (
-              <View style={styles.timeInputs}>
-                <TextInput
-                  style={styles.timeInput}
-                  placeholder="09:00"
-                  value={hours.start || ""}
-                  onChangeText={(value) => handleWorkingHourChange(day, 'start', value)}
-                  placeholderTextColor={theme.colors.textMuted}
-                />
-                <Text style={styles.timeSeparator}>-</Text>
-                <TextInput
-                  style={styles.timeInput}
-                  placeholder="18:00"
-                  value={hours.end || ""}
-                  onChangeText={(value) => handleWorkingHourChange(day, 'end', value)}
-                  placeholderTextColor={theme.colors.textMuted}
-                />
-              </View>
-            )}
-          </View>
-        );
-      }
-
-      return (
-        <View key={day} style={styles.workingHourItem}>
-          <Text style={styles.workingHourDay}>{day}</Text>
-          <Text style={styles.workingHourTime}>{timeText}</Text>
-        </View>
-      );
-    });
   };
 
   if (loading) {
@@ -308,323 +227,187 @@ export default function ProfileScreen() {
   }
 
   if (!profile) {
-    return null;
+    return (
+      <View style={styles.errorContainer}>
+        <Text style={styles.errorText}>Profil bulunamadı</Text>
+      </View>
+    );
   }
 
   return (
     <ScrollView style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
-        <View style={styles.profileImageContainer}>
-          <Image
-            source={require('@/assets/images/icon.png')}
-            style={styles.profileImage}
-          />
+        <View style={styles.headerContent}>
+          <TouchableOpacity
+            style={styles.homeButton}
+            onPress={() => router.push('/')}
+          >
+            <Ionicons name="home-outline" size={24} color={theme.colors.primary} />
+            <Text style={styles.homeButtonText}>Anasayfa</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.logoutButton}
+            onPress={handleSignOut}
+          >
+            <Ionicons name="log-out-outline" size={24} color={theme.colors.destructive} />
+            <Text style={styles.logoutButtonText}>Çıkış Yap</Text>
+          </TouchableOpacity>
         </View>
-        <Text style={styles.name}>{profile.firstName} {profile.lastName}</Text>
-        <Text style={styles.subtitle}>Kuaför</Text>
-        <Text style={styles.email}>{profile.email}</Text>
-        {profile.rating !== undefined && (
-          <View style={styles.ratingContainer}>
-            <Ionicons name="star" size={20} color="#FFD700" />
-            <Text style={styles.ratingText}>{profile.rating.toFixed(1)}</Text>
-          </View>
-        )}
       </View>
 
       <View style={styles.content}>
-        {/* Kişisel Bilgiler */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleContainer}>
-              <Ionicons name="person-outline" size={24} color={theme.colors.primary} />
-              <Text style={styles.sectionTitle}>Kişisel Bilgiler</Text>
+        <View style={styles.profileSection}>
+          <View style={styles.profileCard}>
+            <View style={styles.profileImageContainer}>
+              <Image
+                source={profile.photoURL.startsWith('http') ? { uri: profile.photoURL } : require('@/assets/images/default-customer.jpg')}
+                style={styles.profileImage}
+              />
             </View>
-            <TouchableOpacity
-              style={styles.editButton}
-              onPress={() => setEditingProfile(!editingProfile)}
-            >
-              <Ionicons name={editingProfile ? "close" : "create-outline"} size={20} color={theme.colors.primary} />
-              <Text style={styles.editButtonText}>
-                {editingProfile ? 'İptal' : 'Düzenle'}
-              </Text>
-            </TouchableOpacity>
-          </View>
+            <Text style={styles.profileName}>{profile.name}</Text>
+            <Text style={styles.profileRole}>Müşteri</Text>
 
-          {editingProfile ? (
-            <View style={styles.editForm}>
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Ad</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Adınız"
-                  value={profile.firstName}
-                  onChangeText={(value) => handleProfileChange('firstName', value)}
-                  placeholderTextColor={theme.colors.textMuted}
-                />
-              </View>
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Soyad</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Soyadınız"
-                  value={profile.lastName}
-                  onChangeText={(value) => handleProfileChange('lastName', value)}
-                  placeholderTextColor={theme.colors.textMuted}
-                />
-              </View>
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Telefon</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Telefon numaranız"
-                  value={profile.phone}
-                  onChangeText={(value) => handleProfileChange('phone', value)}
-                  keyboardType="phone-pad"
-                  placeholderTextColor={theme.colors.textMuted}
-                />
-              </View>
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Adres</Text>
-                <TextInput
-                  style={[styles.input, styles.multilineInput]}
-                  placeholder="İşletme adresiniz"
-                  value={profile.address}
-                  onChangeText={(value) => handleProfileChange('address', value)}
-                  multiline
-                  numberOfLines={3}
-                  placeholderTextColor={theme.colors.textMuted}
-                />
-              </View>
-              <TouchableOpacity
-                style={styles.saveButton}
-                onPress={handleUpdateProfile}
-              >
-                <Text style={styles.saveButtonText}>Kaydet</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <View style={styles.profileInfo}>
-              <View style={styles.infoItem}>
-                <Ionicons name="call-outline" size={24} color={theme.colors.primary} />
-                <Text style={styles.infoText}>{profile.phone}</Text>
-              </View>
-              <View style={styles.infoItem}>
-                <Ionicons name="mail-outline" size={24} color={theme.colors.primary} />
-                <Text style={styles.infoText}>{profile.email}</Text>
-              </View>
-              <View style={styles.infoItem}>
-                <Ionicons name="location-outline" size={24} color={theme.colors.primary} />
-                <Text style={styles.infoText}>{profile.address}</Text>
-              </View>
-              <View style={styles.infoItem}>
-                <Ionicons name="cut-outline" size={24} color={theme.colors.primary} />
-                <Text style={styles.infoText}>
-                  {profile.barberType === 'male' ? 'Erkek Kuaförü' :
-                   profile.barberType === 'female' ? 'Kadın Kuaförü' : 'Karma Kuaför'}
-                </Text>
-              </View>
-            </View>
-          )}
-        </View>
-
-        {profile.role === 'barber' && (
-          <>
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>İşletme Bilgileri</Text>
-              <View style={styles.infoItem}>
-                <Ionicons name="business-outline" size={24} color={theme.colors.primary} />
-                <Text style={styles.infoText}>
-                  {profile.barberType === 'male' ? 'Erkek Kuaförü' :
-                   profile.barberType === 'female' ? 'Kadın Kuaförü' : 'Karma Kuaför'}
-                </Text>
-              </View>
-            </View>
-
-            {/* Çalışma Saatleri */}
-            <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <View style={styles.sectionTitleContainer}>
-                  <Ionicons name="time-outline" size={24} color={theme.colors.primary} />
-                  <Text style={styles.sectionTitle}>Çalışma Saatleri</Text>
+            {editing ? (
+              <View style={styles.editForm}>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Ad Soyad</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={profile.name}
+                    onChangeText={(text) => handleProfileChange('name', text)}
+                    placeholder="Ad Soyad"
+                  />
                 </View>
-                <TouchableOpacity
-                  style={styles.editButton}
-                  onPress={() => setEditingWorkingHours(!editingWorkingHours)}
-                >
-                  <Ionicons name={editingWorkingHours ? "close" : "create-outline"} size={20} color={theme.colors.primary} />
-                  <Text style={styles.editButtonText}>
-                    {editingWorkingHours ? 'İptal' : 'Düzenle'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.workingHoursContainer}>
-                {renderWorkingHours()}
-              </View>
-
-              {editingWorkingHours && (
-                <TouchableOpacity
-                  style={styles.saveButton}
-                  onPress={handleUpdateProfile}
-                >
-                  <Text style={styles.saveButtonText}>Kaydet</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {/* Hizmetler */}
-            <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <View style={styles.sectionTitleContainer}>
-                  <Ionicons name="cut-outline" size={24} color={theme.colors.primary} />
-                  <Text style={styles.sectionTitle}>Hizmetler</Text>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Telefon</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={profile.phone}
+                    onChangeText={(text) => handleProfileChange('phone', text)}
+                    placeholder="Telefon"
+                    keyboardType="phone-pad"
+                  />
                 </View>
-                <TouchableOpacity
-                  style={styles.editButton}
-                  onPress={() => setEditingServices(!editingServices)}
-                >
-                  <Ionicons name={editingServices ? "close" : "create-outline"} size={20} color={theme.colors.primary} />
-                  <Text style={styles.editButtonText}>
-                    {editingServices ? 'İptal' : 'Düzenle'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              {editingServices && (
-                <View style={styles.addServiceForm}>
-                  <Text style={styles.formLabel}>Yeni Hizmet Ekle</Text>
-                  <View style={styles.serviceInputGroup}>
-                    <TextInput
-                      style={styles.serviceInput}
-                      placeholder="Hizmet adı"
-                      value={newService.name}
-                      onChangeText={(text) => setNewService({...newService, name: text})}
-                      placeholderTextColor={theme.colors.textMuted}
-                    />
-                    <TextInput
-                      style={styles.serviceInput}
-                      placeholder="Ücret"
-                      value={newService.price === 0 ? '' : newService.price.toString()}
-                      onChangeText={(text) => setNewService({...newService, price: parseFloat(text) || 0})}
-                      keyboardType="numeric"
-                      placeholderTextColor={theme.colors.textMuted}
-                    />
-                    <TextInput
-                      style={styles.serviceInput}
-                      placeholder="Süre (dk)"
-                      value={newService.duration.toString()}
-                      onChangeText={(text) => setNewService({...newService, duration: parseInt(text) || 30})}
-                      keyboardType="numeric"
-                      placeholderTextColor={theme.colors.textMuted}
-                    />
-                  </View>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Adres</Text>
+                  <TextInput
+                    style={[styles.input, styles.multilineInput]}
+                    value={profile.address}
+                    onChangeText={(text) => handleProfileChange('address', text)}
+                    placeholder="Adres"
+                    multiline
+                    numberOfLines={3}
+                  />
+                </View>
+                <View style={styles.editButtons}>
                   <TouchableOpacity
-                    style={styles.addButton}
-                    onPress={handleAddService}
+                    style={[styles.button, styles.cancelButton]}
+                    onPress={() => setEditing(false)}
                   >
-                    <Ionicons name="add" size={20} color={theme.colors.surface} />
-                    <Text style={styles.addButtonText}>Ekle</Text>
+                    <Text style={styles.cancelButtonText}>İptal</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.button, styles.saveButton]}
+                    onPress={handleUpdateProfile}
+                  >
+                    <Text style={styles.saveButtonText}>Kaydet</Text>
                   </TouchableOpacity>
                 </View>
-              )}
+              </View>
+            ) : (
+              <View style={styles.profileInfo}>
+                <View style={styles.infoItem}>
+                  <Ionicons name="location-outline" size={20} color={theme.colors.textSecondary} />
+                  <Text style={styles.infoText}>{profile.address}</Text>
+                </View>
+                <View style={styles.infoItem}>
+                  <Ionicons name="call-outline" size={20} color={theme.colors.textSecondary} />
+                  <Text style={styles.infoText}>{profile.phone}</Text>
+                </View>
+                <View style={styles.infoItem}>
+                  <Ionicons name="mail-outline" size={20} color={theme.colors.textSecondary} />
+                  <Text style={styles.infoText}>{profile.email}</Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.editProfileButton}
+                  onPress={() => setEditing(true)}
+                >
+                  <Text style={styles.editProfileButtonText}>Profili Düzenle</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
 
-              <View style={styles.serviceList}>
-                {profile.services.map((service, index) => (
-                  <View key={index} style={styles.serviceItem}>
-                    <View>
-                      <Text style={styles.serviceName}>{service.name}</Text>
-                      <Text style={styles.serviceDetails}>
-                        {service.price} TL - {service.duration} dakika
+        {/* Sağ Taraf - Randevular ve İstatistikler */}
+        <View style={styles.mainSection}>
+          {/* Randevular */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Son Randevular</Text>
+              <TouchableOpacity onPress={() => router.push('/appointments')}>
+                <Text style={styles.seeAllButton}>Tümünü Gör</Text>
+              </TouchableOpacity>
+            </View>
+            {recentAppointments.length === 0 ? (
+              <Text style={styles.emptyText}>Henüz randevunuz bulunmuyor.</Text>
+            ) : (
+              <View style={styles.appointmentsList}>
+                {recentAppointments.map((appointment) => (
+                  <View key={appointment.id} style={styles.appointmentCard}>
+                    <View style={styles.appointmentInfo}>
+                      <Text style={styles.appointmentBarber}>{appointment.barberName}</Text>
+                      <Text style={styles.appointmentDate}>
+                        {new Date(appointment.date).toLocaleDateString('tr-TR')} - {appointment.time}
                       </Text>
+                      <Text style={styles.appointmentService}>{appointment.serviceName}</Text>
                     </View>
-                    {editingServices && (
-                      <TouchableOpacity
-                        onPress={() => handleRemoveService(index)}
-                        style={styles.removeButton}
-                      >
-                        <Ionicons name="close-circle" size={24} color={theme.colors.error} />
-                      </TouchableOpacity>
-                    )}
+                    <View style={[styles.statusBadge, { backgroundColor: getStatusColor(appointment.status) }]}>
+                      <Text style={styles.statusText}>{getStatusText(appointment.status)}</Text>
+                    </View>
                   </View>
                 ))}
               </View>
-
-              {editingServices && (
-                <TouchableOpacity
-                  style={styles.saveButton}
-                  onPress={handleUpdateProfile}
-                >
-                  <Text style={styles.saveButtonText}>Kaydet</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          </>
-        )}
-
-        {/* Randevular */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleContainer}>
-              <Ionicons name="calendar-outline" size={24} color={theme.colors.primary} />
-              <Text style={styles.sectionTitle}>Bugünkü Randevular</Text>
-            </View>
-            <TouchableOpacity style={styles.editButton}>
-              <Text style={styles.editButtonText}>Tümünü Gör</Text>
-            </TouchableOpacity>
+            )}
           </View>
 
-          {/* Örnek randevular */}
-          <View style={styles.appointmentList}>
-            <View style={styles.appointmentItem}>
-              <View style={styles.appointmentCustomer}>
-                <View style={styles.customerAvatar}>
-                  <Text style={styles.customerInitials}>AY</Text>
-                </View>
-                <View>
-                  <Text style={styles.customerName}>Ahmet Yılmaz</Text>
-                  <Text style={styles.appointmentService}>Saç Kesimi</Text>
-                </View>
+          {/* İstatistikler */}
+          <View style={styles.statsGrid}>
+            <View style={styles.statCard}>
+              <View style={styles.statHeader}>
+                <Ionicons name="calendar-outline" size={24} color={theme.colors.primary} />
+                <Text style={styles.statTitle}>Toplam Randevu</Text>
               </View>
-              <View style={styles.appointmentTime}>
-                <Text style={styles.timeText}>14:30</Text>
-                <Text style={styles.durationText}>30 dk</Text>
-              </View>
+              <Text style={styles.statValue}>{statistics.totalAppointments}</Text>
+              <Text style={styles.statSubtext}>
+                Bu ay {statistics.monthlyAppointments} randevu
+              </Text>
             </View>
 
-            <View style={styles.appointmentItem}>
-              <View style={styles.appointmentCustomer}>
-                <View style={styles.customerAvatar}>
-                  <Text style={styles.customerInitials}>AD</Text>
-                </View>
-                <View>
-                  <Text style={styles.customerName}>Ayşe Demir</Text>
-                  <Text style={styles.appointmentService}>Saç Boyama</Text>
-                </View>
+            <View style={styles.statCard}>
+              <View style={styles.statHeader}>
+                <Ionicons name="time-outline" size={24} color={theme.colors.primary} />
+                <Text style={styles.statTitle}>Son Randevu</Text>
               </View>
-              <View style={styles.appointmentTime}>
-                <Text style={styles.timeText}>16:00</Text>
-                <Text style={styles.durationText}>60 dk</Text>
-              </View>
+              {statistics.lastAppointment ? (
+                <>
+                  <Text style={styles.statValue}>
+                    {new Date(statistics.lastAppointment.date).toLocaleDateString('tr-TR')}
+                  </Text>
+                  <Text style={styles.statSubtext}>
+                    {statistics.lastAppointment.service}
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.statValue}>-</Text>
+                  <Text style={styles.statSubtext}>Henüz randevu yok</Text>
+                </>
+              )}
             </View>
           </View>
         </View>
-
-        <TouchableOpacity
-          style={styles.editButton}
-          onPress={() => router.push('/profile/edit')}
-        >
-          <Ionicons name="create-outline" size={24} color={theme.colors.surface} />
-          <Text style={styles.editButtonText}>Profili Düzenle</Text>
-        </TouchableOpacity>
-
-        {/* Çıkış Yap */}
-        <TouchableOpacity
-          style={styles.logoutButton}
-          onPress={handleLogout}
-        >
-          <Ionicons name="log-out-outline" size={24} color={theme.colors.error} />
-          <Text style={styles.logoutButtonText}>Çıkış Yap</Text>
-      </TouchableOpacity>
       </View>
     </ScrollView>
   );
@@ -635,119 +418,118 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: theme.colors.background,
   },
+  header: {
+    backgroundColor: theme.colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  headerContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: theme.spacing.lg,
+  },
+  homeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.primary + '20',
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    borderRadius: theme.borderRadius.md,
+  },
+  homeButtonText: {
+    ...theme.typography.body,
+    color: theme.colors.primary,
+    marginLeft: theme.spacing.sm,
+  },
+  logoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.destructive + '20',
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    borderRadius: theme.borderRadius.md,
+  },
+  logoutButtonText: {
+    ...theme.typography.body,
+    color: theme.colors.destructive,
+    marginLeft: theme.spacing.sm,
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  header: {
-    backgroundColor: theme.colors.primary,
-    padding: theme.spacing.xl,
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    ...theme.typography.body,
+    color: theme.colors.error,
+  },
+  content: {
+    padding: theme.spacing.lg,
+  },
+  profileSection: {
+    marginBottom: theme.spacing.xl,
+  },
+  profileCard: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.lg,
+    padding: theme.spacing.lg,
     alignItems: 'center',
   },
   profileImageContainer: {
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: theme.colors.surface,
-    marginBottom: theme.spacing.md,
     overflow: 'hidden',
-    borderWidth: 4,
-    borderColor: theme.colors.surface,
+    marginBottom: theme.spacing.md,
+    borderWidth: 3,
+    borderColor: theme.colors.primary,
   },
   profileImage: {
     width: '100%',
     height: '100%',
   },
-  name: {
-    ...theme.typography.h1,
-    color: theme.colors.surface,
-    marginBottom: theme.spacing.xs,
-  },
-  subtitle: {
-    ...theme.typography.body,
-    color: theme.colors.surface,
-    opacity: 0.9,
-    marginBottom: theme.spacing.xs,
-  },
-  email: {
-    ...theme.typography.body,
-    color: theme.colors.surface,
-    opacity: 0.8,
-  },
-  ratingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: theme.spacing.sm,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.xs,
-    borderRadius: theme.borderRadius.full,
-  },
-  ratingText: {
-    ...theme.typography.body,
-    color: theme.colors.surface,
-    marginLeft: theme.spacing.xs,
-    fontWeight: 'bold',
-  },
-  content: {
-    padding: theme.spacing.lg,
-  },
-  section: {
-    marginBottom: theme.spacing.xl,
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.borderRadius.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    overflow: 'hidden',
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: theme.spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-  },
-  sectionTitleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  sectionTitle: {
+  profileName: {
     ...theme.typography.h2,
     color: theme.colors.text,
-    marginLeft: theme.spacing.sm,
+    marginBottom: theme.spacing.xs,
   },
-  editButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'transparent',
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.xs,
-    borderRadius: theme.borderRadius.lg,
-  },
-  editButtonText: {
-    ...theme.typography.button,
-    color: theme.colors.primary,
-    marginLeft: theme.spacing.xs,
+  profileRole: {
+    ...theme.typography.body,
+    color: theme.colors.textSecondary,
+    marginBottom: theme.spacing.lg,
   },
   profileInfo: {
-    padding: theme.spacing.md,
+    width: '100%',
   },
   infoItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: theme.spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    marginBottom: theme.spacing.md,
   },
   infoText: {
     ...theme.typography.body,
     color: theme.colors.text,
     marginLeft: theme.spacing.md,
   },
-  editForm: {
+  editProfileButton: {
+    backgroundColor: theme.colors.primary,
     padding: theme.spacing.md,
+    borderRadius: theme.borderRadius.md,
+    alignItems: 'center',
+    marginTop: theme.spacing.md,
+  },
+  editProfileButtonText: {
+    ...theme.typography.button,
+    color: theme.colors.primaryForeground,
+  },
+  editForm: {
+    width: '100%',
   },
   inputGroup: {
     marginBottom: theme.spacing.md,
@@ -761,7 +543,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.background,
     borderWidth: 1,
     borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.lg,
+    borderRadius: theme.borderRadius.md,
     padding: theme.spacing.md,
     color: theme.colors.text,
   },
@@ -769,199 +551,128 @@ const styles = StyleSheet.create({
     height: 100,
     textAlignVertical: 'top',
   },
+  editButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: theme.spacing.md,
+  },
+  button: {
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: theme.spacing.md,
+    borderRadius: theme.borderRadius.md,
+  },
+  cancelButton: {
+    backgroundColor: theme.colors.background,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  cancelButtonText: {
+    ...theme.typography.button,
+    color: theme.colors.text,
+  },
   saveButton: {
     backgroundColor: theme.colors.primary,
-    padding: theme.spacing.md,
-    borderRadius: theme.borderRadius.lg,
-    alignItems: 'center',
-    marginTop: theme.spacing.md,
   },
   saveButtonText: {
     ...theme.typography.button,
-    color: theme.colors.surface,
+    color: theme.colors.primaryForeground,
   },
-  workingHoursContainer: {
-    padding: theme.spacing.md,
+  mainSection: {
+    gap: theme.spacing.xl,
   },
-  workingHourItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: theme.spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-  },
-  workingHourDay: {
-    ...theme.typography.body,
-    color: theme.colors.text,
-  },
-  workingHourTime: {
-    ...theme.typography.body,
-    color: theme.colors.textSecondary,
-  },
-  workingHourEditItem: {
-    marginBottom: theme.spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-    paddingBottom: theme.spacing.md,
-  },
-  workingHourEditDay: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: theme.spacing.sm,
-  },
-  closedSwitch: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  closedText: {
-    ...theme.typography.bodySmall,
-    color: theme.colors.textSecondary,
-    marginRight: theme.spacing.sm,
-  },
-  timeInputs: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  timeInput: {
-    flex: 1,
-    backgroundColor: theme.colors.background,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.lg,
-    padding: theme.spacing.md,
-  },
-  timeSeparator: {
-    marginHorizontal: theme.spacing.sm,
-    color: theme.colors.textSecondary,
-  },
-  addServiceForm: {
-    padding: theme.spacing.md,
-    backgroundColor: theme.colors.background,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-  },
-  formLabel: {
-    ...theme.typography.bodySmall,
-    color: theme.colors.textSecondary,
-    marginBottom: theme.spacing.sm,
-  },
-  serviceInputGroup: {
-    flexDirection: 'row',
-    marginBottom: theme.spacing.sm,
-  },
-  serviceInput: {
-    flex: 1,
+  section: {
     backgroundColor: theme.colors.surface,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
     borderRadius: theme.borderRadius.lg,
-    padding: theme.spacing.md,
-    marginRight: theme.spacing.sm,
+    padding: theme.spacing.lg,
   },
-  addButton: {
-    backgroundColor: theme.colors.primary,
-    padding: theme.spacing.sm,
-    borderRadius: theme.borderRadius.lg,
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
-  },
-  addButtonText: {
-    ...theme.typography.button,
-    color: theme.colors.surface,
-    marginLeft: theme.spacing.xs,
-  },
-  serviceList: {
-    padding: theme.spacing.md,
-  },
-  serviceItem: {
+  sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: theme.spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    marginBottom: theme.spacing.lg,
   },
-  serviceName: {
+  sectionTitle: {
+    ...theme.typography.h3,
+    color: theme.colors.text,
+  },
+  seeAllButton: {
+    ...theme.typography.body,
+    color: theme.colors.primary,
+  },
+  emptyText: {
+    ...theme.typography.body,
+    color: theme.colors.textSecondary,
+    textAlign: 'center',
+    padding: theme.spacing.lg,
+  },
+  appointmentsList: {
+    gap: theme.spacing.md,
+  },
+  appointmentCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: theme.colors.background,
+    borderRadius: theme.borderRadius.md,
+    padding: theme.spacing.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  appointmentInfo: {
+    flex: 1,
+  },
+  appointmentBarber: {
     ...theme.typography.body,
     color: theme.colors.text,
+    fontWeight: '600',
     marginBottom: theme.spacing.xs,
   },
-  serviceDetails: {
+  appointmentDate: {
     ...theme.typography.bodySmall,
     color: theme.colors.textSecondary,
-  },
-  removeButton: {
-    padding: theme.spacing.xs,
-  },
-  appointmentList: {
-    padding: theme.spacing.md,
-  },
-  appointmentItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: theme.spacing.md,
-    backgroundColor: theme.colors.background,
-    borderRadius: theme.borderRadius.lg,
-    marginBottom: theme.spacing.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-  },
-  appointmentCustomer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  customerAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: theme.colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: theme.spacing.md,
-  },
-  customerInitials: {
-    ...theme.typography.bodySmall,
-    color: theme.colors.surface,
-    fontWeight: 'bold',
-  },
-  customerName: {
-    ...theme.typography.body,
-    color: theme.colors.text,
-    fontWeight: 'bold',
+    marginBottom: theme.spacing.xs,
   },
   appointmentService: {
     ...theme.typography.bodySmall,
     color: theme.colors.textSecondary,
   },
-  appointmentTime: {
-    alignItems: 'flex-end',
+  statusBadge: {
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.xs,
+    borderRadius: theme.borderRadius.full,
   },
-  timeText: {
-    ...theme.typography.body,
-    color: theme.colors.text,
-    fontWeight: 'bold',
-  },
-  durationText: {
+  statusText: {
     ...theme.typography.bodySmall,
-    color: theme.colors.textSecondary,
+    color: theme.colors.surface,
+    fontWeight: '600',
   },
-  logoutButton: {
+  statsGrid: {
+    flexDirection: 'row',
+    gap: theme.spacing.md,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.lg,
+    padding: theme.spacing.lg,
+  },
+  statHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    padding: theme.spacing.md,
-    borderRadius: theme.borderRadius.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.error,
-    marginTop: theme.spacing.xl,
-    marginBottom: theme.spacing.xl,
+    marginBottom: theme.spacing.md,
   },
-  logoutButtonText: {
-    ...theme.typography.button,
-    color: theme.colors.error,
+  statTitle: {
+    ...theme.typography.h4,
+    color: theme.colors.text,
     marginLeft: theme.spacing.sm,
+  },
+  statValue: {
+    ...theme.typography.h2,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs,
+  },
+  statSubtext: {
+    ...theme.typography.bodySmall,
+    color: theme.colors.textSecondary,
   },
 }); 

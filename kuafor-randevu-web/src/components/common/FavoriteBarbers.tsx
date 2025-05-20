@@ -2,18 +2,27 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, DocumentData } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { useAuth } from '@/hooks/useAuth';
 import Image from 'next/image';
-import { MapPin, Star } from 'lucide-react';
+import { MapPin, Star, Loader2 } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 
 interface FavoriteBarber {
   id: string;
-  firstName: string;
-  lastName: string;
+  name: string;
   address: string;
   rating: number;
+  photoURL?: string;
+}
+
+interface BarberData extends DocumentData {
+  name?: string;
+  firstName?: string;
+  lastName?: string;
+  address?: string;
+  rating?: number;
   photoURL?: string;
 }
 
@@ -30,25 +39,25 @@ export default function FavoriteBarbers() {
   }, [user]);
 
   const fetchFavorites = async () => {
+    if (!user) return;
+
     try {
-      const favoritesRef = collection(db, 'users', user!.uid, 'favorites');
+      setLoading(true);
+      const favoritesRef = collection(db, 'users', user.uid, 'favorites');
       const favoritesSnapshot = await getDocs(favoritesRef);
       
       const favoriteBarbers: FavoriteBarber[] = [];
       
-      for (const doc of favoritesSnapshot.docs) {
-        const barberData = doc.data();
-        const barberDoc = await getDocs(
-          query(collection(db, 'users'), where('id', '==', barberData.barberId))
-        );
+      for (const docSnapshot of favoritesSnapshot.docs) {
+        const barberData = docSnapshot.data();
+        const barberDoc = await getDoc(doc(db, 'users', barberData.barberId));
         
-        if (!barberDoc.empty) {
-          const barber = barberDoc.docs[0].data();
+        if (barberDoc.exists()) {
+          const barber = barberDoc.data() as BarberData;
           favoriteBarbers.push({
-            id: barberDoc.docs[0].id,
-            firstName: barber.firstName,
-            lastName: barber.lastName,
-            address: barber.address,
+            id: barberDoc.id,
+            name: barber.name || `${barber.firstName || ''} ${barber.lastName || ''}`.trim(),
+            address: barber.address || '',
             rating: barber.rating || 0,
             photoURL: barber.photoURL
           });
@@ -58,6 +67,7 @@ export default function FavoriteBarbers() {
       setFavorites(favoriteBarbers);
     } catch (error) {
       console.error('Error fetching favorites:', error);
+      toast.error('Favori kuaförler yüklenirken bir hata oluştu');
     } finally {
       setLoading(false);
     }
@@ -66,7 +76,7 @@ export default function FavoriteBarbers() {
   if (loading) {
     return (
       <div className="flex items-center justify-center p-4">
-        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary"></div>
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
       </div>
     );
   }
@@ -90,7 +100,7 @@ export default function FavoriteBarbers() {
           <div className="relative h-12 w-12 overflow-hidden rounded-full">
             <Image
               src={barber.photoURL || '/images/default-barber.jpg'}
-              alt={`${barber.firstName} ${barber.lastName}`}
+              alt={barber.name}
               fill
               sizes="48px"
               className="object-cover"
@@ -98,9 +108,7 @@ export default function FavoriteBarbers() {
             />
           </div>
           <div className="flex-1 min-w-0">
-            <h4 className="font-medium truncate">
-              {barber.firstName} {barber.lastName}
-            </h4>
+            <h4 className="font-medium truncate">{barber.name}</h4>
             <div className="flex items-center space-x-2 text-sm text-muted-foreground">
               <MapPin className="h-4 w-4" />
               <span className="truncate">{barber.address}</span>

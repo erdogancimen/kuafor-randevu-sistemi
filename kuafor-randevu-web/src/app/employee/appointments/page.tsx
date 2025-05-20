@@ -118,7 +118,7 @@ export default function EmployeeAppointmentsPage() {
     }
   };
 
-  const handleAppointmentStatus = async (appointmentId: string, status: 'confirmed' | 'rejected') => {
+  const handleAppointmentStatus = async (appointmentId: string, status: 'confirmed' | 'rejected' | 'completed') => {
     if (!auth.currentUser) return;
 
     try {
@@ -138,7 +138,26 @@ export default function EmployeeAppointmentsPage() {
         )
       );
 
-      toast.success(`Randevu ${status === 'confirmed' ? 'onaylandı' : 'reddedildi'}`);
+      // Bildirim gönder
+      if (status === 'completed') {
+        const appointment = appointments.find(a => a.id === appointmentId);
+        if (appointment) {
+          await fetch('/api/send-notification', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              userId: appointment.userId,
+              title: 'Randevu Tamamlandı',
+              message: `${appointment.service} hizmetiniz tamamlandı. Değerlendirmenizi bekliyoruz.`,
+              type: 'appointment_completed'
+            }),
+          });
+        }
+      }
+
+      toast.success(`Randevu ${status === 'confirmed' ? 'onaylandı' : status === 'rejected' ? 'reddedildi' : 'tamamlandı'}`);
     } catch (error) {
       console.error('Error updating appointment:', error);
       toast.error('Randevu güncellenirken bir hata oluştu');
@@ -155,6 +174,8 @@ export default function EmployeeAppointmentsPage() {
         return 'bg-green-100 text-green-800';
       case 'rejected':
         return 'bg-red-100 text-red-800';
+      case 'completed':
+        return 'bg-blue-100 text-blue-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
@@ -168,6 +189,8 @@ export default function EmployeeAppointmentsPage() {
         return 'Onaylandı';
       case 'rejected':
         return 'Reddedildi';
+      case 'completed':
+        return 'Tamamlandı';
       default:
         return status;
     }
@@ -274,6 +297,22 @@ export default function EmployeeAppointmentsPage() {
                           )}
                         </button>
                       </div>
+                    )}
+                    {appointment.status === 'confirmed' && (
+                      <button
+                        onClick={() => handleAppointmentStatus(appointment.id, 'completed')}
+                        disabled={updating === appointment.id}
+                        className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {updating === appointment.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <>
+                            <Check className="h-4 w-4 mr-1" />
+                            <span>Tamamlandı</span>
+                          </>
+                        )}
+                      </button>
                     )}
                   </div>
                 </div>

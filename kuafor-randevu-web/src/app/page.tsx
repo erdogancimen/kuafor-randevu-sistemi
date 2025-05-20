@@ -7,8 +7,9 @@ import { collection, query, where, getDocs, orderBy, limit, getDoc, doc } from '
 import { db } from '@/config/firebase';
 import { signOut } from 'firebase/auth';
 import Image from 'next/image';
-import { MapPin, Star, Clock, LogOut, Search, Map, Filter, Calendar, User, ChevronRight } from 'lucide-react';
+import { MapPin, Star, Clock, LogOut, Search, Map, Filter, Calendar, User, ChevronRight, X } from 'lucide-react';
 import NotificationList from '@/components/notifications/NotificationList';
+import AIAssistant from '@/components/AIAssistant';
 
 interface Barber {
   id: string;
@@ -37,12 +38,17 @@ interface Barber {
 
 export default function Home() {
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedBarberType, setSelectedBarberType] = useState<'male' | 'female' | 'mixed' | 'all'>('all');
+  const [selectedService, setSelectedService] = useState<string>('all');
+  const [showFilters, setShowFilters] = useState(false);
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [showLocationRequest, setShowLocationRequest] = useState(false);
   const [popularBarbers, setPopularBarbers] = useState<Barber[]>([]);
   const [recentBarbers, setRecentBarbers] = useState<Barber[]>([]);
   const [nearbyBarbers, setNearbyBarbers] = useState<Barber[]>([]);
+  const [filteredBarbers, setFilteredBarbers] = useState<Barber[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
@@ -231,10 +237,73 @@ export default function Home() {
     getLocation();
   };
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    // Arama işlemi için yönlendirme yapılacak
-    router.push(`/search?q=${searchQuery}`);
+  const handleSearch = (e?: React.MouseEvent | React.KeyboardEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    setIsSearching(true);
+    performSearch();
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setSearchQuery(value);
+    if (value === '') {
+      handleClearSearch();
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      e.stopPropagation();
+      handleSearch(e);
+    }
+  };
+
+  // Arama ve filtreleme işlemini yönet
+  const performSearch = () => {
+    const allBarbers = [...popularBarbers, ...recentBarbers, ...nearbyBarbers];
+    const uniqueBarbers = allBarbers.reduce((acc: Barber[], current) => {
+      const exists = acc.find(barber => barber.id === current.id);
+      if (!exists) {
+        acc.push(current);
+      }
+      return acc;
+    }, []);
+    
+    const filtered = uniqueBarbers.filter(barber => {
+      const nameMatch = searchQuery === '' || 
+        `${barber.firstName} ${barber.lastName}`.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      const typeMatch = selectedBarberType === 'all' || barber.type === selectedBarberType;
+      
+      const serviceMatch = selectedService === 'all' || 
+        barber.services?.some((service: { name: string }) => 
+          service.name.toLowerCase().includes(selectedService.toLowerCase().replace('-', ' '))
+        );
+
+      return nameMatch && typeMatch && serviceMatch;
+    });
+
+    setFilteredBarbers(filtered);
+  };
+
+  // Filtre değişikliklerini izle
+  useEffect(() => {
+    if (isSearching) {
+      performSearch();
+    }
+  }, [selectedBarberType, selectedService, popularBarbers, recentBarbers, nearbyBarbers]);
+
+  const handleClearSearch = () => {
+    setSearchQuery('');
+    setSelectedBarberType('all');
+    setSelectedService('all');
+    setShowFilters(false);
+    setIsSearching(false);
+    setFilteredBarbers([]);
   };
 
   const HeroSection = () => (
@@ -281,23 +350,80 @@ export default function Home() {
               Size en yakın kuaförleri bulun, değerlendirmeleri inceleyin ve hemen randevu alın.
             </p>
             <div className="flex flex-col sm:flex-row gap-4">
-              <form onSubmit={handleSearch} className="flex-1">
+              <div className="flex-1 space-y-4">
                 <div className="relative">
                   <input
                     type="text"
                     placeholder="Kuaför ara..."
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onChange={handleInputChange}
+                    onKeyDown={handleKeyDown}
                     className="w-full px-4 py-3 rounded-lg border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                   />
+                  {isSearching && (
+                    <button
+                      type="button"
+                      onClick={handleClearSearch}
+                      className="absolute right-24 top-1/2 -translate-y-1/2 p-2 text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  )}
                   <button
-                    type="submit"
+                    type="button"
+                    onClick={() => setShowFilters(!showFilters)}
+                    className="absolute right-12 top-1/2 -translate-y-1/2 p-2 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <Filter className="w-5 h-5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSearch}
                     className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-muted-foreground hover:text-foreground transition-colors"
                   >
                     <Search className="w-5 h-5" />
                   </button>
                 </div>
-              </form>
+
+                {/* Filtreler */}
+                {showFilters && (
+                  <div className="grid grid-cols-2 gap-4 p-4 bg-background rounded-lg border border-input">
+                    <div>
+                      <label className="block text-sm font-medium mb-2">Kuaför Türü</label>
+                      <select
+                        value={selectedBarberType}
+                        onChange={(e) => {
+                          setSelectedBarberType(e.target.value as any);
+                        }}
+                        className="w-full px-3 py-2 rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                      >
+                        <option value="all">Tümü</option>
+                        <option value="male">Erkek Kuaförü</option>
+                        <option value="female">Kadın Kuaförü</option>
+                        <option value="mixed">Karma</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-2">Hizmet</label>
+                      <select
+                        value={selectedService}
+                        onChange={(e) => {
+                          setSelectedService(e.target.value);
+                        }}
+                        className="w-full px-3 py-2 rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                      >
+                        <option value="all">Tümü</option>
+                        <option value="sac-kesimi">Saç Kesimi</option>
+                        <option value="sac-boyama">Saç Boyama</option>
+                        <option value="cilt-bakimi">Cilt Bakımı</option>
+                        <option value="sakal-tiras">Sakal Tıraşı</option>
+                        <option value="manikur">Manikür</option>
+                        <option value="pedikur">Pedikür</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
+              </div>
               {!user && (
                 <button
                   onClick={() => router.push('/register')}
@@ -403,63 +529,100 @@ export default function Home() {
       <HeroSection />
       
       <div className="container mx-auto px-4 py-12 space-y-16">
-        {/* Popüler Kuaförler */}
-        <section className="animate-in">
-          <SectionHeader
-            title="Popüler Kuaförler"
-            description="En çok tercih edilen kuaförlerimizi keşfedin"
-          />
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {popularBarbers.map((barber) => (
-              <BarberCard key={barber.id} barber={barber} />
-            ))}
-          </div>
-        </section>
-
-        {/* Son Ziyaret Edilenler */}
-        <section className="animate-in">
-          <SectionHeader
-            title="Son Ziyaret Edilenler"
-            description="Daha önce baktığınız kuaförler"
-          />
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {recentBarbers.map((barber) => (
-              <BarberCard key={barber.id} barber={barber} />
-            ))}
-          </div>
-        </section>
-
-        {/* Yakındaki Kuaförler */}
-        <section id="nearby-barbers" className="animate-in">
-          <SectionHeader
-            title="Yakındaki Kuaförler"
-            description="Size en yakın kuaförleri keşfedin"
-          />
-          {showLocationRequest && !location && !locationError && (
-            <div className="mb-8 p-4 rounded-lg bg-primary/10 text-primary">
-              <p className="text-sm">
-                Yakındaki kuaförleri görmek için konum izni vermeniz gerekiyor.
-              </p>
+        {/* Arama Sonuçları */}
+        {isSearching && (
+          <section className="animate-in">
+            <div className="mb-6 flex items-center justify-between">
+              <SectionHeader
+                title="Arama Sonuçları"
+                description={`"${searchQuery}" için ${filteredBarbers.length} sonuç bulundu`}
+              />
               <button
-                onClick={requestLocationPermission}
-                className="mt-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                onClick={handleClearSearch}
+                className="flex items-center space-x-2 text-sm text-muted-foreground hover:text-foreground"
               >
-                Konum İzni Ver
+                <X className="h-4 w-4" />
+                <span>Aramayı Temizle</span>
               </button>
             </div>
-          )}
-          {locationError && (
-            <div className="mb-8 p-4 rounded-lg bg-destructive/10 text-destructive">
-              <p className="text-sm">{locationError}</p>
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {filteredBarbers.map((barber) => (
+                <BarberCard key={barber.id} barber={barber} />
+              ))}
+              {filteredBarbers.length === 0 && (
+                <div className="col-span-full text-center py-12">
+                  <p className="text-muted-foreground">Aramanızla eşleşen kuaför bulunamadı.</p>
+                </div>
+              )}
             </div>
-          )}
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {nearbyBarbers.map((barber) => (
-              <BarberCard key={barber.id} barber={barber} />
-            ))}
-          </div>
-        </section>
+          </section>
+        )}
+
+        {/* Popüler Kuaförler */}
+        {!isSearching && (
+          <section className="animate-in">
+            <SectionHeader
+              title="Popüler Kuaförler"
+              description="En çok tercih edilen kuaförlerimizi keşfedin"
+            />
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {popularBarbers.map((barber) => (
+                <BarberCard key={barber.id} barber={barber} />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Son Ziyaret Edilenler */}
+        {!isSearching && (
+          <section className="animate-in">
+            <SectionHeader
+              title="Son Ziyaret Edilenler"
+              description="Daha önce baktığınız kuaförler"
+            />
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {recentBarbers.map((barber) => (
+                <BarberCard key={barber.id} barber={barber} />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Yakındaki Kuaförler */}
+        {!isSearching && (
+          <section id="nearby-barbers" className="animate-in">
+            <SectionHeader
+              title="Yakındaki Kuaförler"
+              description="Size en yakın kuaförleri keşfedin"
+            />
+            {showLocationRequest && !location && !locationError && (
+              <div className="mb-8 p-4 rounded-lg bg-primary/10 text-primary">
+                <p className="text-sm">
+                  Yakındaki kuaförleri görmek için konum izni vermeniz gerekiyor.
+                </p>
+                <button
+                  onClick={requestLocationPermission}
+                  className="mt-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                >
+                  Konum İzni Ver
+                </button>
+              </div>
+            )}
+            {locationError && (
+              <div className="mb-8 p-4 rounded-lg bg-destructive/10 text-destructive">
+                <p className="text-sm">{locationError}</p>
+              </div>
+            )}
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {nearbyBarbers.map((barber) => (
+                <BarberCard key={barber.id} barber={barber} />
+              ))}
+            </div>
+          </section>
+        )}
       </div>
+
+      <AIAssistant />
     </main>
   );
 }

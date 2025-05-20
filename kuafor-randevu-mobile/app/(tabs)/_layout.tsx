@@ -31,6 +31,17 @@ export default function TabLayout() {
         name="profile"
         options={{
           title: 'Profil',
+          headerShown: false,
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="person" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="barber-profile"
+        options={{
+          title: '',
+          headerShown: false,
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="person" size={size} color={color} />
           ),

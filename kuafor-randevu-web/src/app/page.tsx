@@ -9,7 +9,6 @@ import { signOut } from 'firebase/auth';
 import Image from 'next/image';
 import { MapPin, Star, Clock, LogOut, Search, Map, Filter, Calendar, User, ChevronRight } from 'lucide-react';
 import NotificationList from '@/components/notifications/NotificationList';
-import AIChat from '@/components/ai/AIChat';
 
 interface Barber {
   id: string;
@@ -461,9 +460,6 @@ export default function Home() {
           </div>
         </section>
       </div>
-
-      {/* AI Chat Component */}
-      <AIChat />
     </main>
   );
 }

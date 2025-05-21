@@ -465,21 +465,21 @@ export default function EmployeeProfileScreen() {
               style={styles.menuItem}
               onPress={() => {
                 setShowMenu(false);
-                router.push('/employee/appointments');
+                router.push('/');
               }}
             >
-              <Ionicons name="calendar-outline" size={24} color={theme.colors.text} />
-              <Text style={styles.menuItemText}>Randevular</Text>
+              <Ionicons name="home-outline" size={24} color={theme.colors.text} />
+              <Text style={styles.menuItemText}>Anasayfa</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.menuItem}
               onPress={() => {
                 setShowMenu(false);
-                router.push('/employee/settings');
+                router.push('/employee/appointments');
               }}
             >
-              <Ionicons name="settings-outline" size={24} color={theme.colors.text} />
-              <Text style={styles.menuItemText}>Ayarlar</Text>
+              <Ionicons name="calendar-outline" size={24} color={theme.colors.text} />
+              <Text style={styles.menuItemText}>Randevular</Text>
             </TouchableOpacity>
             <View style={styles.menuDivider} />
             <TouchableOpacity

@@ -374,6 +374,13 @@ export default function BarberProfileScreen() {
             </View>
             <TouchableOpacity
               style={styles.menuItem}
+              onPress={() => handleMenuItemPress('/')}
+            >
+              <Ionicons name="home-outline" size={24} color={theme.colors.text} />
+              <Text style={styles.menuItemText}>Anasayfa</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.menuItem}
               onPress={() => handleMenuItemPress('/barber/appointments')}
             >
               <Ionicons name="calendar-outline" size={24} color={theme.colors.text} />
@@ -392,13 +399,6 @@ export default function BarberProfileScreen() {
             >
               <Ionicons name="people-outline" size={24} color={theme.colors.text} />
               <Text style={styles.menuItemText}>Çalışanlar</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => handleMenuItemPress('/barber/settings')}
-            >
-              <Ionicons name="settings-outline" size={24} color={theme.colors.text} />
-              <Text style={styles.menuItemText}>Ayarlar</Text>
             </TouchableOpacity>
             <View style={styles.menuDivider} />
             <TouchableOpacity

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { auth } from '@/config/firebase';
 import { collection, query, where, getDocs, orderBy, limit, getDoc, doc } from 'firebase/firestore';
@@ -10,6 +10,7 @@ import Image from 'next/image';
 import { MapPin, Star, Clock, LogOut, Search, Map, Filter, Calendar, User, ChevronRight, X } from 'lucide-react';
 import NotificationList from '@/components/notifications/NotificationList';
 import AIAssistant from '@/components/AIAssistant';
+import React from 'react';
 
 interface Barber {
   id: string;
@@ -34,7 +35,162 @@ interface Barber {
     averageRating: number;
     totalReviews: number;
   };
+  createdAt?: string;
 }
+
+// HeroSection bileşenini ayrı bir bileşen olarak tanımla
+const HeroSection = React.memo(({ 
+  user, 
+  userRole, 
+  onProfileClick, 
+  onLogout, 
+  router,
+  searchState,
+  onSearchChange,
+  onClearSearch,
+  onToggleFilters,
+  showFilters
+}: { 
+  user: any;
+  userRole: string | null;
+  onProfileClick: () => void;
+  onLogout: () => void;
+  router: any;
+  searchState: {
+    query: string;
+    filteredBarbers: {
+      popular: Barber[];
+      nearby: Barber[];
+    };
+  };
+  onSearchChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onClearSearch: () => void;
+  onToggleFilters: () => void;
+  showFilters: boolean;
+}) => {
+  // Sadece development modunda log göster
+  if (process.env.NODE_ENV === 'development') {
+    console.log('=== HeroSection Render ===');
+    console.log('user:', user);
+    console.log('userRole:', userRole);
+  }
+
+  // Event handler'ları useCallback ile optimize et
+  const handleLoginClick = React.useCallback(() => {
+    router.push('/login');
+  }, [router]);
+
+  const handleRegisterClick = React.useCallback(() => {
+    router.push('/register');
+  }, [router]);
+
+  return (
+    <div className="relative overflow-hidden bg-gradient-to-br from-primary/10 via-primary/5 to-background py-20">
+      <div className="container mx-auto px-4">
+        {/* Üst menü */}
+        <div className="mb-8 flex items-center justify-end space-x-4 relative z-50">
+          {user ? (
+            <>
+              <NotificationList userId={user.uid} />
+              <button
+                onClick={onProfileClick}
+                className="flex items-center space-x-2 rounded-md bg-primary/10 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/20"
+              >
+                <User className="h-4 w-4" />
+                <span>Profilim</span>
+              </button>
+              <button
+                onClick={onLogout}
+                className="flex items-center space-x-2 rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90"
+              >
+                <LogOut className="h-4 w-4" />
+                <span>Çıkış Yap</span>
+              </button>
+            </>
+          ) : (
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={handleLoginClick}
+                className="flex items-center space-x-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              >
+                <User className="h-4 w-4" />
+                <span>Giriş Yap</span>
+              </button>
+              <button
+                onClick={handleRegisterClick}
+                className="flex items-center space-x-2 rounded-md bg-primary/10 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/20"
+              >
+                <span>Hemen Başla</span>
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="grid gap-8 lg:grid-cols-2 lg:gap-12 items-center">
+          <div className="space-y-6 animate-in">
+            <h1 className="text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
+              En İyi Kuaförleri <br />
+              <span className="text-primary">Keşfedin</span>
+            </h1>
+            <p className="text-lg text-muted-foreground">
+              Size en yakın kuaförleri bulun, değerlendirmeleri inceleyin ve hemen randevu alın.
+            </p>
+
+            {/* Arama Bölümü */}
+            <div className="relative max-w-xl">
+              <input
+                type="text"
+                id="barber-search"
+                name="barber-search"
+                placeholder="Kuaför ara..."
+                value={searchState.query}
+                onChange={onSearchChange}
+                autoComplete="off"
+                className="w-full px-4 py-3 rounded-lg border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+              {searchState.query && (
+                <button
+                  type="button"
+                  onClick={onClearSearch}
+                  className="absolute right-12 top-1/2 -translate-y-1/2 p-2 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={onToggleFilters}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <Filter className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+          <div className="relative h-[400px] lg:h-[500px] animate-in">
+            <Image
+              src="/images/hero-image.jpg"
+              alt="Kuaför Randevu Sistemi"
+              fill
+              sizes="(max-width: 768px) 100vw, 50vw"
+              className="object-cover rounded-2xl"
+              priority
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}, (prevProps, nextProps) => {
+  // Sadece gerekli prop'lar değiştiğinde render et
+  return (
+    prevProps.user?.uid === nextProps.user?.uid &&
+    prevProps.userRole === nextProps.userRole &&
+    prevProps.searchState.query === nextProps.searchState.query &&
+    prevProps.showFilters === nextProps.showFilters
+  );
+});
+
+HeroSection.displayName = 'HeroSection';
 
 export default function Home() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -47,12 +203,23 @@ export default function Home() {
   const [popularBarbers, setPopularBarbers] = useState<Barber[]>([]);
   const [recentBarbers, setRecentBarbers] = useState<Barber[]>([]);
   const [nearbyBarbers, setNearbyBarbers] = useState<Barber[]>([]);
-  const [filteredBarbers, setFilteredBarbers] = useState<Barber[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
+  const [filteredBarbers, setFilteredBarbers] = useState<{
+    popular: Barber[];
+    nearby: Barber[];
+  }>({ popular: [], nearby: [] });
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
   const router = useRouter();
+
+  // Arama state'lerini birleştir ve optimize et
+  const [searchState, setSearchState] = useState({
+    query: '',
+    filteredBarbers: {
+      popular: [] as Barber[],
+      nearby: [] as Barber[]
+    }
+  });
 
   const getLocation = () => {
     if (navigator.geolocation) {
@@ -151,39 +318,51 @@ export default function Home() {
             ? reviews.reduce((acc, review) => acc + (review.rating || 0), 0) / totalReviews
             : 0;
 
+          // Mesafe bilgisini ekle
+          let distance = undefined;
+          if (location) {
+            distance = calculateDistance(
+              location.lat,
+              location.lng,
+              barberData.latitude || 0,
+              barberData.longitude || 0
+            );
+          }
+
           return {
             id: doc.id,
             ...barberData,
             stats: {
               averageRating,
               totalReviews
-            }
+            },
+            distance
           } as Barber;
         }));
 
         // Popüler kuaförleri sırala (rating'e göre)
         const popularBarbers = [...allBarbers]
           .sort((a, b) => (b.stats?.averageRating || 0) - (a.stats?.averageRating || 0))
-          .slice(0, 6);
+          .slice(0, 10);
 
-        // Son ziyaret edilenler (şimdilik popülerlerden ilk 3'ü)
-        const recentBarbers = popularBarbers.slice(0, 3);
+        // Son eklenen kuaförler (createdAt'e göre sıralı)
+        const recentBarbers = [...allBarbers]
+          .sort((a, b) => {
+            const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return dateB - dateA;
+          })
+          .slice(0, 10);
 
-        // Yakındaki kuaförler (konum varsa)
-        let nearbyBarbers = popularBarbers.slice(3, 6);
+        // Yakındaki kuaförler (mesafeye göre sıralı)
+        let nearbyBarbers = [...allBarbers];
         if (location) {
           nearbyBarbers = allBarbers
-            .map(barber => ({
-              ...barber,
-              distance: calculateDistance(
-                location.lat,
-                location.lng,
-                barber.latitude || 0,
-                barber.longitude || 0
-              )
-            }))
             .sort((a, b) => (a.distance || 0) - (b.distance || 0))
-            .slice(0, 6);
+            .slice(0, 10);
+        } else {
+          // Konum yoksa son eklenen kuaförleri göster
+          nearbyBarbers = recentBarbers;
         }
 
         setPopularBarbers(popularBarbers);
@@ -237,33 +416,21 @@ export default function Home() {
     getLocation();
   };
 
-  const handleSearch = (e?: React.MouseEvent | React.KeyboardEvent) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
+  // Arama işlevi
+  const handleSearch = useCallback(() => {
+    const { query } = searchState;
+    
+    if (!query.trim()) {
+      setSearchState(prev => ({
+        ...prev,
+        filteredBarbers: {
+          popular: [],
+          nearby: []
+        }
+      }));
+      return;
     }
-    setIsSearching(true);
-    performSearch();
-  };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setSearchQuery(value);
-    if (value === '') {
-      handleClearSearch();
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      e.stopPropagation();
-      handleSearch(e);
-    }
-  };
-
-  // Arama ve filtreleme işlemini yönet
-  const performSearch = () => {
     const allBarbers = [...popularBarbers, ...recentBarbers, ...nearbyBarbers];
     const uniqueBarbers = allBarbers.reduce((acc: Barber[], current) => {
       const exists = acc.find(barber => barber.id === current.id);
@@ -274,180 +441,62 @@ export default function Home() {
     }, []);
     
     const filtered = uniqueBarbers.filter(barber => {
-      const nameMatch = searchQuery === '' || 
-        `${barber.firstName} ${barber.lastName}`.toLowerCase().includes(searchQuery.toLowerCase());
-      
-      const typeMatch = selectedBarberType === 'all' || barber.type === selectedBarberType;
-      
-      const serviceMatch = selectedService === 'all' || 
-        barber.services?.some((service: { name: string }) => 
-          service.name.toLowerCase().includes(selectedService.toLowerCase().replace('-', ' '))
-        );
+      const nameMatch = `${barber.firstName} ${barber.lastName}`.toLowerCase().includes(query.toLowerCase());
+      const addressMatch = barber.address?.toLowerCase().includes(query.toLowerCase());
+      const serviceMatch = barber.services?.some(service => 
+        service.name.toLowerCase().includes(query.toLowerCase())
+      );
 
-      return nameMatch && typeMatch && serviceMatch;
+      return nameMatch || addressMatch || serviceMatch;
     });
 
-    setFilteredBarbers(filtered);
-  };
+    // Popüler ve yakın kuaförleri ayır
+    const popularFiltered = [...filtered]
+      .sort((a, b) => (b.stats?.averageRating || 0) - (a.stats?.averageRating || 0))
+      .slice(0, 5);
 
-  // Filtre değişikliklerini izle
+    const nearbyFiltered = location 
+      ? [...filtered]
+          .map(barber => ({
+            ...barber,
+            distance: calculateDistance(
+              location.lat,
+              location.lng,
+              barber.latitude || 0,
+              barber.longitude || 0
+            )
+          }))
+          .sort((a, b) => (a.distance || 0) - (b.distance || 0))
+          .slice(0, 5)
+      : [];
+
+    setSearchState(prev => ({
+      ...prev,
+      filteredBarbers: {
+        popular: popularFiltered,
+        nearby: nearbyFiltered
+      }
+    }));
+  }, [searchState.query, popularBarbers, recentBarbers, nearbyBarbers, location]);
+
+  // Arama çubuğu değiştiğinde
+  const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setSearchState(prev => ({
+      ...prev,
+      query: value
+    }));
+    handleSearch();
+  }, [handleSearch]);
+
+  // State değişikliklerini izle (sadece development modunda)
   useEffect(() => {
-    if (isSearching) {
-      performSearch();
+    if (process.env.NODE_ENV === 'development') {
+      console.log('=== State değişikliği ===');
+      console.log('searchQuery:', searchState.query);
+      console.log('filteredBarbers:', searchState.filteredBarbers);
     }
-  }, [selectedBarberType, selectedService, popularBarbers, recentBarbers, nearbyBarbers]);
-
-  const handleClearSearch = () => {
-    setSearchQuery('');
-    setSelectedBarberType('all');
-    setSelectedService('all');
-    setShowFilters(false);
-    setIsSearching(false);
-    setFilteredBarbers([]);
-  };
-
-  const HeroSection = () => (
-    <div className="relative overflow-hidden bg-gradient-to-br from-primary/10 via-primary/5 to-background py-20">
-      <div className="container mx-auto px-4">
-        {/* Üst menü */}
-        <div className="mb-8 flex items-center justify-end space-x-4 relative z-50">
-          {user ? (
-            <>
-              <NotificationList userId={user.uid} />
-              <button
-                onClick={handleProfileClick}
-                className="flex items-center space-x-2 rounded-md bg-primary/10 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/20"
-              >
-                <User className="h-4 w-4" />
-                <span>Profilim</span>
-              </button>
-              <button
-                onClick={handleLogout}
-                className="flex items-center space-x-2 rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90"
-              >
-                <LogOut className="h-4 w-4" />
-                <span>Çıkış Yap</span>
-              </button>
-            </>
-          ) : (
-            <button
-              onClick={() => router.push('/login')}
-              className="flex items-center space-x-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-            >
-              <User className="h-4 w-4" />
-              <span>Giriş Yap</span>
-            </button>
-          )}
-        </div>
-
-        <div className="grid gap-8 lg:grid-cols-2 lg:gap-12 items-center">
-          <div className="space-y-6 animate-in">
-            <h1 className="text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
-              En İyi Kuaförleri <br />
-              <span className="text-primary">Keşfedin</span>
-            </h1>
-            <p className="text-lg text-muted-foreground">
-              Size en yakın kuaförleri bulun, değerlendirmeleri inceleyin ve hemen randevu alın.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className="flex-1 space-y-4">
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="Kuaför ara..."
-                    value={searchQuery}
-                    onChange={handleInputChange}
-                    onKeyDown={handleKeyDown}
-                    className="w-full px-4 py-3 rounded-lg border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                  />
-                  {isSearching && (
-                    <button
-                      type="button"
-                      onClick={handleClearSearch}
-                      className="absolute right-24 top-1/2 -translate-y-1/2 p-2 text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      <X className="w-5 h-5" />
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setShowFilters(!showFilters)}
-                    className="absolute right-12 top-1/2 -translate-y-1/2 p-2 text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    <Filter className="w-5 h-5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSearch}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    <Search className="w-5 h-5" />
-                  </button>
-                </div>
-
-                {/* Filtreler */}
-                {showFilters && (
-                  <div className="grid grid-cols-2 gap-4 p-4 bg-background rounded-lg border border-input">
-                    <div>
-                      <label className="block text-sm font-medium mb-2">Kuaför Türü</label>
-                      <select
-                        value={selectedBarberType}
-                        onChange={(e) => {
-                          setSelectedBarberType(e.target.value as any);
-                        }}
-                        className="w-full px-3 py-2 rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                      >
-                        <option value="all">Tümü</option>
-                        <option value="male">Erkek Kuaförü</option>
-                        <option value="female">Kadın Kuaförü</option>
-                        <option value="mixed">Karma</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-2">Hizmet</label>
-                      <select
-                        value={selectedService}
-                        onChange={(e) => {
-                          setSelectedService(e.target.value);
-                        }}
-                        className="w-full px-3 py-2 rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                      >
-                        <option value="all">Tümü</option>
-                        <option value="sac-kesimi">Saç Kesimi</option>
-                        <option value="sac-boyama">Saç Boyama</option>
-                        <option value="cilt-bakimi">Cilt Bakımı</option>
-                        <option value="sakal-tiras">Sakal Tıraşı</option>
-                        <option value="manikur">Manikür</option>
-                        <option value="pedikur">Pedikür</option>
-                      </select>
-                    </div>
-                  </div>
-                )}
-              </div>
-              {!user && (
-                <button
-                  onClick={() => router.push('/register')}
-                  className="px-6 py-3 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-                >
-                  Hemen Başla
-                </button>
-              )}
-            </div>
-          </div>
-          <div className="relative h-[400px] lg:h-[500px] animate-in">
-            <Image
-              src="/images/hero-image.jpg"
-              alt="Kuaför Randevu Sistemi"
-              fill
-              sizes="(max-width: 768px) 100vw, 50vw"
-              className="object-cover rounded-2xl"
-              priority
-            />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+  }, [searchState]);
 
   const SectionHeader = ({ title, description }: { title: string; description?: string }) => (
     <div className="space-y-2 mb-8">
@@ -505,6 +554,12 @@ export default function Home() {
               <MapPin className="w-4 h-4 mr-1" />
               <span className="truncate">{barber.address}</span>
             </div>
+            {barber.distance !== undefined && (
+              <div className="flex items-center mt-1 text-sm text-gray-400">
+                <Map className="w-4 h-4 mr-1" />
+                <span>{barber.distance.toFixed(1)} km uzaklıkta</span>
+              </div>
+            )}
             <div className="flex items-center mt-1 text-sm text-gray-400">
               <Clock className="w-4 h-4 mr-1" />
               <span>{getWorkingHours()}</span>
@@ -526,40 +581,138 @@ export default function Home() {
 
   return (
     <main className="min-h-screen">
-      <HeroSection />
+      <HeroSection 
+        user={user}
+        userRole={userRole}
+        onProfileClick={handleProfileClick}
+        onLogout={handleLogout}
+        router={router}
+        searchState={searchState}
+        onSearchChange={(e) => {
+          if (process.env.NODE_ENV === 'development') {
+            console.log('=== Search Input Change ===');
+            console.log('value:', e.target.value);
+          }
+          handleSearchChange(e);
+        }}
+        onClearSearch={() => {
+          if (process.env.NODE_ENV === 'development') {
+            console.log('=== Clear Search ===');
+          }
+          setSearchState({
+            query: '',
+            filteredBarbers: {
+              popular: [],
+              nearby: []
+            }
+          });
+        }}
+        onToggleFilters={() => {
+          if (process.env.NODE_ENV === 'development') {
+            console.log('=== Toggle Filters ===');
+          }
+          setShowFilters(!showFilters);
+        }}
+        showFilters={showFilters}
+      />
       
       <div className="container mx-auto px-4 py-12 space-y-16">
+        {/* Filtreler */}
+        {showFilters && (
+          <div className="max-w-3xl mx-auto mt-4 grid grid-cols-2 gap-4 p-4 bg-background rounded-lg border border-input">
+            <div>
+              <label htmlFor="barber-type" className="block text-sm font-medium mb-2">Kuaför Türü</label>
+              <select
+                id="barber-type"
+                name="barber-type"
+                value={selectedBarberType}
+                onChange={(e) => {
+                  setSelectedBarberType(e.target.value as any);
+                }}
+                className="w-full px-3 py-2 rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="all">Tümü</option>
+                <option value="male">Erkek Kuaförü</option>
+                <option value="female">Kadın Kuaförü</option>
+                <option value="mixed">Karma</option>
+              </select>
+            </div>
+            <div>
+              <label htmlFor="service-type" className="block text-sm font-medium mb-2">Hizmet</label>
+              <select
+                id="service-type"
+                name="service-type"
+                value={selectedService}
+                onChange={(e) => {
+                  setSelectedService(e.target.value);
+                }}
+                className="w-full px-3 py-2 rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="all">Tümü</option>
+                <option value="sac-kesimi">Saç Kesimi</option>
+                <option value="sac-boyama">Saç Boyama</option>
+                <option value="cilt-bakimi">Cilt Bakımı</option>
+                <option value="sakal-tiras">Sakal Tıraşı</option>
+                <option value="manikur">Manikür</option>
+                <option value="pedikur">Pedikür</option>
+              </select>
+            </div>
+          </div>
+        )}
+
         {/* Arama Sonuçları */}
-        {isSearching && (
+        {(searchState.filteredBarbers.popular.length > 0 || searchState.filteredBarbers.nearby.length > 0) && (
           <section className="animate-in">
             <div className="mb-6 flex items-center justify-between">
               <SectionHeader
                 title="Arama Sonuçları"
-                description={`"${searchQuery}" için ${filteredBarbers.length} sonuç bulundu`}
+                description={`"${searchState.query}" için sonuçlar`}
               />
               <button
-                onClick={handleClearSearch}
+                onClick={() => {
+                  setSearchState({
+                    query: '',
+                    filteredBarbers: {
+                      popular: [],
+                      nearby: []
+                    }
+                  });
+                }}
                 className="flex items-center space-x-2 text-sm text-muted-foreground hover:text-foreground"
               >
                 <X className="h-4 w-4" />
                 <span>Aramayı Temizle</span>
               </button>
             </div>
+
+            {/* Popüler Kuaförler */}
+            {searchState.filteredBarbers.popular.length > 0 && (
+              <div className="mb-12">
+                <h3 className="text-xl font-semibold mb-4">Popüler Kuaförler</h3>
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {filteredBarbers.map((barber) => (
+                  {searchState.filteredBarbers.popular.map((barber) => (
                 <BarberCard key={barber.id} barber={barber} />
               ))}
-              {filteredBarbers.length === 0 && (
-                <div className="col-span-full text-center py-12">
-                  <p className="text-muted-foreground">Aramanızla eşleşen kuaför bulunamadı.</p>
+                </div>
                 </div>
               )}
+
+            {/* Yakındaki Kuaförler */}
+            {searchState.filteredBarbers.nearby.length > 0 && (
+              <div>
+                <h3 className="text-xl font-semibold mb-4">Yakındaki Kuaförler</h3>
+                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                  {searchState.filteredBarbers.nearby.map((barber) => (
+                    <BarberCard key={barber.id} barber={barber} />
+                  ))}
+                </div>
             </div>
+            )}
           </section>
         )}
 
         {/* Popüler Kuaförler */}
-        {!isSearching && (
+        {searchState.filteredBarbers.popular.length === 0 && searchState.filteredBarbers.nearby.length === 0 && (
           <section className="animate-in">
             <SectionHeader
               title="Popüler Kuaförler"
@@ -574,7 +727,7 @@ export default function Home() {
         )}
 
         {/* Son Ziyaret Edilenler */}
-        {!isSearching && (
+        {searchState.filteredBarbers.popular.length === 0 && searchState.filteredBarbers.nearby.length === 0 && (
           <section className="animate-in">
             <SectionHeader
               title="Son Ziyaret Edilenler"
@@ -589,7 +742,7 @@ export default function Home() {
         )}
 
         {/* Yakındaki Kuaförler */}
-        {!isSearching && (
+        {searchState.filteredBarbers.popular.length === 0 && searchState.filteredBarbers.nearby.length === 0 && (
           <section id="nearby-barbers" className="animate-in">
             <SectionHeader
               title="Yakındaki Kuaförler"

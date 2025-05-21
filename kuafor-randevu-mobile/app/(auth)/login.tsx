@@ -49,29 +49,39 @@ export default function LoginScreen() {
         } else if (userData.role === 'customer') {
           router.replace('/');
         } else {
-          setError(`Geçersiz kullanıcı rolü: ${userData.role}. Lütfen yönetici ile iletişime geçin.`);
+          setError('Geçersiz kullanıcı rolü. Lütfen yönetici ile iletişime geçin.');
         }
       } else {
         setError('Kullanıcı bilgileri bulunamadı. Lütfen yönetici ile iletişime geçin.');
       }
     } catch (err: any) {
-      let errorMessage = 'Giriş yapılırken bir hata oluştu';
+      console.log('Giriş hatası:', err.code);
+      let errorMessage = '';
       
       switch (err.code) {
         case 'auth/invalid-email':
-          errorMessage = 'Geçersiz e-posta adresi';
+          errorMessage = 'Lütfen geçerli bir e-posta adresi giriniz.';
           break;
         case 'auth/user-disabled':
-          errorMessage = 'Bu hesap devre dışı bırakılmış';
+          errorMessage = 'Bu hesap devre dışı bırakılmış. Lütfen yönetici ile iletişime geçin.';
           break;
         case 'auth/user-not-found':
-          errorMessage = 'Kullanıcı bulunamadı';
+          errorMessage = 'Bu e-posta adresi ile kayıtlı bir hesap bulunamadı.';
           break;
         case 'auth/wrong-password':
-          errorMessage = 'Hatalı şifre';
+          errorMessage = 'Girdiğiniz şifre hatalı. Lütfen tekrar deneyiniz.';
+          break;
+        case 'auth/too-many-requests':
+          errorMessage = 'Çok fazla başarısız giriş denemesi. Lütfen daha sonra tekrar deneyiniz.';
+          break;
+        case 'auth/network-request-failed':
+          errorMessage = 'İnternet bağlantınızı kontrol ediniz.';
+          break;
+        case 'auth/invalid-credential':
+          errorMessage = 'E-posta adresi veya şifre hatalı. Lütfen bilgilerinizi kontrol ediniz.';
           break;
         default:
-          errorMessage = err.message;
+          errorMessage = 'Giriş yapılırken bir hata oluştu. Lütfen tekrar deneyiniz.';
       }
       
       setError(errorMessage);
@@ -86,64 +96,75 @@ export default function LoginScreen() {
       style={styles.container}
     >
       <ScrollView contentContainerStyle={styles.scrollContent}>
-      <View style={styles.header}>
+        <View style={styles.header}>
           <Text style={styles.title}>Hoş Geldiniz</Text>
           <Text style={styles.subtitle}>Hesabınıza giriş yapın</Text>
-      </View>
-      
-      <View style={styles.form}>
+        </View>
+        
+        <View style={styles.form}>
           <View style={styles.inputContainer}>
             <Text style={styles.label}>E-posta</Text>
-            <View style={styles.inputWrapper}>
-              <Ionicons name="mail-outline" size={20} color={theme.colors.textSecondary} style={styles.inputIcon} />
-        <TextInput
-          style={styles.input}
+            <View style={[styles.inputWrapper, error && error.includes('e-posta') && styles.inputError]}>
+              <Ionicons name="mail-outline" size={20} color={error && error.includes('e-posta') ? theme.colors.error : theme.colors.textSecondary} style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
                 placeholder="E-posta adresiniz"
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
-          autoCapitalize="none"
+                value={email}
+                onChangeText={(text) => {
+                  setEmail(text);
+                  setError('');
+                }}
+                keyboardType="email-address"
+                autoCapitalize="none"
                 placeholderTextColor={theme.colors.textMuted}
-        />
+              />
             </View>
           </View>
         
           <View style={styles.inputContainer}>
             <Text style={styles.label}>Şifre</Text>
-            <View style={styles.inputWrapper}>
-              <Ionicons name="lock-closed-outline" size={20} color={theme.colors.textSecondary} style={styles.inputIcon} />
-        <TextInput
-          style={styles.input}
+            <View style={[styles.inputWrapper, error && error.includes('şifre') && styles.inputError]}>
+              <Ionicons name="lock-closed-outline" size={20} color={error && error.includes('şifre') ? theme.colors.error : theme.colors.textSecondary} style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
                 placeholder="Şifreniz"
-          value={password}
-          onChangeText={setPassword}
+                value={password}
+                onChangeText={(text) => {
+                  setPassword(text);
+                  setError('');
+                }}
                 secureTextEntry={!showPassword}
                 placeholderTextColor={theme.colors.textMuted}
-        />
-        <TouchableOpacity 
+              />
+              <TouchableOpacity 
                 onPress={() => setShowPassword(!showPassword)}
                 style={styles.passwordToggle}
               >
                 <Ionicons
                   name={showPassword ? 'eye-off-outline' : 'eye-outline'}
                   size={20}
-                  color={theme.colors.textSecondary}
+                  color={error && error.includes('şifre') ? theme.colors.error : theme.colors.textSecondary}
                 />
               </TouchableOpacity>
             </View>
           </View>
 
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+          {error ? (
+            <View style={styles.errorContainer}>
+              <Ionicons name="alert-circle-outline" size={20} color={theme.colors.error} />
+              <Text style={styles.error}>{error}</Text>
+            </View>
+          ) : null}
         
           <View style={styles.buttonContainer}>
             <Button
               title="Giriş Yap"
-          onPress={handleLogin}
+              onPress={handleLogin}
               loading={loading}
               variant="primary"
               fullWidth
             />
-      </View>
+          </View>
 
           <TouchableOpacity
             onPress={() => router.push('/register')}
@@ -152,8 +173,8 @@ export default function LoginScreen() {
             <Text style={styles.registerText}>
               Hesabınız yok mu? <Text style={styles.registerTextBold}>Kayıt olun</Text>
             </Text>
-        </TouchableOpacity>
-      </View>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -231,5 +252,21 @@ const styles = StyleSheet.create({
   registerTextBold: {
     color: theme.colors.primary,
     fontWeight: '600',
+  },
+  inputError: {
+    borderColor: theme.colors.error,
+  },
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.error + '10',
+    padding: theme.spacing.md,
+    borderRadius: theme.borderRadius.md,
+    gap: theme.spacing.sm,
+  },
+  error: {
+    ...theme.typography.bodySmall,
+    color: theme.colors.error,
+    flex: 1,
   },
 }); 

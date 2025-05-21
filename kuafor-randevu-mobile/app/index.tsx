@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { getFirestore, collection, query, where, orderBy, limit, getDocs, getDoc, doc } from 'firebase/firestore';
 import { getAuth, signOut } from 'firebase/auth';
 import NotificationList from '@/components/NotificationList';
+import * as Location from 'expo-location';
 
 // Varsayılan görseller için
 const DEFAULT_IMAGES = {
@@ -36,9 +37,13 @@ interface Barber {
   firstName: string;
   lastName: string;
   photoURL?: string;
-  rating: number;
-  reviews: number;
-  services: string[];
+  rating?: number;
+  reviews?: number;
+  services: Array<{
+    name: string;
+    price: number;
+    duration: number;
+  }>;
   workingHours: Record<string, WorkingHours>;
   address: string;
   description: string;
@@ -49,6 +54,8 @@ interface Barber {
     averageRating: number;
     totalReviews: number;
   };
+  updatedAt?: string;
+  distance?: number;
 }
 
 export default function HomeScreen() {
@@ -64,6 +71,15 @@ export default function HomeScreen() {
   const [userRole, setUserRole] = useState<string | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notificationCount, setNotificationCount] = useState(0);
+  const [showAllRecentBarbers, setShowAllRecentBarbers] = useState(false);
+  const [showAllNearbyBarbers, setShowAllNearbyBarbers] = useState(false);
+  const [showAllPopularBarbers, setShowAllPopularBarbers] = useState(false);
+  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const [filteredBarbers, setFilteredBarbers] = useState<{
+    popular: Barber[];
+    nearby: Barber[];
+  }>({ popular: [], nearby: [] });
   const router = useRouter();
   const auth = getAuth();
 
@@ -100,23 +116,79 @@ export default function HomeScreen() {
     try {
       const db = getFirestore();
       const barbersRef = collection(db, 'users');
-      const q = query(
-        barbersRef,
-        where('role', '==', 'barber'),
-        orderBy('rating', 'desc'),
-        limit(6)
-      );
       
-      const querySnapshot = await getDocs(q);
-      const barbers = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        photoURL: DEFAULT_IMAGES.barber,
-      })) as Barber[];
+      // Önce tüm kuaförleri getir
+      const allBarbersQuery = query(
+        barbersRef,
+        where('role', '==', 'barber')
+      );
+      const allBarbersSnapshot = await getDocs(allBarbersQuery);
+      
+      // Her kuaför için değerlendirme istatistiklerini getir
+      const allBarbers = await Promise.all(allBarbersSnapshot.docs.map(async (doc) => {
+        const barberData = doc.data();
+        
+        // Her kuaför için değerlendirme istatistiklerini getir
+        const reviewsQuery = query(
+          collection(db, 'reviews'),
+          where('barberId', '==', doc.id)
+        );
+        const reviewsSnapshot = await getDocs(reviewsQuery);
+        const reviews = reviewsSnapshot.docs.map(reviewDoc => reviewDoc.data());
+        
+        const totalReviews = reviews.length;
+        const averageRating = totalReviews > 0
+          ? reviews.reduce((acc, review) => acc + (review.rating || 0), 0) / totalReviews
+          : 0;
 
-      setPopularBarbers(barbers.slice(0, 3));
-      setRecentBarbers(barbers.slice(3));
-      setNearbyBarbers(barbers.slice(3, 6));
+        return {
+          id: doc.id,
+          ...barberData,
+          photoURL: DEFAULT_IMAGES.barber,
+          stats: {
+            averageRating,
+            totalReviews
+          }
+        } as Barber;
+      }));
+
+      // Popüler kuaförler (rating'e göre sıralı)
+      const popularBarbers = [...allBarbers]
+        .sort((a, b) => (b.stats?.averageRating || 0) - (a.stats?.averageRating || 0))
+        .slice(0, 10);
+
+      // Son eklenen kuaförler (updatedAt'e göre sıralı)
+      const recentBarbers = [...allBarbers]
+        .sort((a, b) => {
+          const dateA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+          const dateB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+          return dateB - dateA;
+        })
+        .slice(0, 10);
+
+      // Yakındaki kuaförler (konum varsa)
+      let nearbyBarbers = [...allBarbers];
+      if (location) {
+        nearbyBarbers = allBarbers
+          .map(barber => ({
+            ...barber,
+            distance: calculateDistance(
+              location.lat,
+              location.lng,
+              barber.latitude || 0,
+              barber.longitude || 0
+            )
+          }))
+          .sort((a, b) => (a.distance || 0) - (b.distance || 0))
+          .slice(0, 10);
+      } else {
+        // Konum yoksa son eklenen kuaförleri göster
+        nearbyBarbers = recentBarbers;
+      }
+
+      setPopularBarbers(popularBarbers);
+      setRecentBarbers(recentBarbers);
+      setNearbyBarbers(nearbyBarbers);
     } catch (error) {
       console.error('Error fetching barbers:', error);
     } finally {
@@ -124,9 +196,65 @@ export default function HomeScreen() {
     }
   };
 
+  // Arama işlevi
   const handleSearch = () => {
-    if (searchQuery.trim()) {
-      router.push(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
+    if (!searchQuery.trim()) {
+      setFilteredBarbers({ popular: [], nearby: [] });
+      return;
+    }
+
+    const allBarbers = [...popularBarbers, ...recentBarbers, ...nearbyBarbers];
+    const uniqueBarbers = allBarbers.reduce((acc: Barber[], current) => {
+      const exists = acc.find(barber => barber.id === current.id);
+      if (!exists) {
+        acc.push(current);
+      }
+      return acc;
+    }, []);
+
+    const filtered = uniqueBarbers.filter(barber => {
+      const nameMatch = `${barber.firstName} ${barber.lastName}`.toLowerCase().includes(searchQuery.toLowerCase());
+      const addressMatch = barber.address?.toLowerCase().includes(searchQuery.toLowerCase());
+      const serviceMatch = barber.services?.some(service => 
+        service.name.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+
+      return nameMatch || addressMatch || serviceMatch;
+    });
+
+    // Popüler ve yakın kuaförleri ayır
+    const popularFiltered = [...filtered]
+      .sort((a, b) => (b.stats?.averageRating || 0) - (a.stats?.averageRating || 0))
+      .slice(0, 5);
+
+    const nearbyFiltered = location 
+      ? [...filtered]
+          .map(barber => ({
+            ...barber,
+            distance: calculateDistance(
+              location.lat,
+              location.lng,
+              barber.latitude || 0,
+              barber.longitude || 0
+            )
+          }))
+          .sort((a, b) => (a.distance || 0) - (b.distance || 0))
+          .slice(0, 5)
+      : [];
+
+    setFilteredBarbers({
+      popular: popularFiltered,
+      nearby: nearbyFiltered
+    });
+  };
+
+  // Arama çubuğu değiştiğinde
+  const handleSearchChange = (text: string) => {
+    setSearchQuery(text);
+    if (text.trim()) {
+      handleSearch();
+    } else {
+      setFilteredBarbers({ popular: [], nearby: [] });
     }
   };
 
@@ -161,6 +289,57 @@ export default function HomeScreen() {
         break;
     }
   };
+
+  // Konum alma fonksiyonu
+  const getLocation = async () => {
+    try {
+      // Önce konum izni iste
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      
+      if (status !== 'granted') {
+        setLocationError('Konum izni reddedildi');
+        return;
+      }
+
+      // Konum bilgisini al
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High
+      });
+
+      setLocation({
+        lat: location.coords.latitude,
+        lng: location.coords.longitude
+      });
+      setLocationError(null);
+    } catch (error) {
+      console.error('Error getting location:', error);
+      setLocationError('Konum bilgisi alınamadı');
+    }
+  };
+
+  // İki nokta arasındaki mesafeyi hesapla (km cinsinden)
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371; // Dünya'nın yarıçapı (km)
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * 
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  };
+
+  const toRad = (value: number) => {
+    return value * Math.PI / 180;
+  };
+
+  // Konum değiştiğinde kuaförleri yeniden yükle
+  useEffect(() => {
+    if (location) {
+      fetchBarbers();
+    }
+  }, [location]);
 
   if (loading) {
     return (
@@ -237,18 +416,21 @@ export default function HomeScreen() {
             style={styles.searchInput}
             placeholder="Kuaför ara..."
             value={searchQuery}
-            onChangeText={setSearchQuery}
-            onSubmitEditing={handleSearch}
+            onChangeText={handleSearchChange}
             returnKeyType="search"
             placeholderTextColor={theme.colors.textMuted}
           />
-          <TouchableOpacity 
-            style={styles.filterButton}
-            onPress={() => setShowFilters(!showFilters)}
-          >
-          <Ionicons name="filter" size={20} color={theme.colors.textSecondary} />
-
-          </TouchableOpacity>
+          {searchQuery ? (
+            <TouchableOpacity 
+              style={styles.clearButton}
+              onPress={() => {
+                setSearchQuery('');
+                setFilteredBarbers({ popular: [], nearby: [] });
+              }}
+            >
+              <Ionicons name="close-circle" size={20} color={theme.colors.textSecondary} />
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         {/* Filters */}
@@ -282,19 +464,147 @@ export default function HomeScreen() {
         )}
       </View>
 
+      {/* Arama Sonuçları */}
+      {(filteredBarbers.popular.length > 0 || filteredBarbers.nearby.length > 0) && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Arama Sonuçları</Text>
+          </View>
+
+          {/* Popüler Kuaförler */}
+          {filteredBarbers.popular.length > 0 && (
+            <>
+              <Text style={styles.subSectionTitle}>Popüler Kuaförler</Text>
+              <ScrollView 
+                horizontal={false} 
+                showsVerticalScrollIndicator={false} 
+                style={styles.barbersList}
+              >
+                {filteredBarbers.popular.map((barber) => (
+                  <TouchableOpacity
+                    key={barber.id}
+                    style={[styles.barberCard, styles.barberCardVertical]}
+                    onPress={() => router.push({
+                      pathname: '/barber/[id]',
+                      params: { id: barber.id }
+                    })}
+                  >
+                    <Image
+                      source={barber.photoURL || DEFAULT_IMAGES.barber}
+                      style={styles.barberImageVertical}
+                    />
+                    <View style={styles.barberInfo}>
+                      <Text style={styles.barberName}>
+                        {barber.firstName} {barber.lastName}
+                      </Text>
+                      <View style={styles.barberRating}>
+                        <Ionicons name="star" size={16} color={theme.colors.warning} />
+                        <Text style={styles.ratingText}>
+                          {barber.stats?.averageRating ? barber.stats.averageRating.toFixed(1) : '0.0'}
+                        </Text>
+                        <Text style={styles.reviewCount}>
+                          ({barber.stats?.totalReviews || 0})
+                        </Text>
+                      </View>
+                      <Text style={styles.workingHours}>
+                        {getWorkingHours(barber.workingHours)}
+                      </Text>
+                      <TouchableOpacity
+                        style={styles.appointmentButton}
+                        onPress={() => router.push({
+                          pathname: '/barber/[id]',
+                          params: { id: barber.id }
+                        })}
+                      >
+                        <Text style={styles.appointmentButtonText}>Randevu Oluştur</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </>
+          )}
+
+          {/* Yakındaki Kuaförler */}
+          {filteredBarbers.nearby.length > 0 && (
+            <>
+              <Text style={[styles.subSectionTitle, { marginTop: 20 }]}>Yakındaki Kuaförler</Text>
+              <ScrollView 
+                horizontal={false} 
+                showsVerticalScrollIndicator={false} 
+                style={styles.barbersList}
+              >
+                {filteredBarbers.nearby.map((barber) => (
+                  <TouchableOpacity
+                    key={barber.id}
+                    style={[styles.barberCard, styles.barberCardVertical]}
+                    onPress={() => router.push({
+                      pathname: '/barber/[id]',
+                      params: { id: barber.id }
+                    })}
+                  >
+                    <Image
+                      source={barber.photoURL || DEFAULT_IMAGES.barber}
+                      style={styles.barberImageVertical}
+                    />
+                    <View style={styles.barberInfo}>
+                      <Text style={styles.barberName}>
+                        {barber.firstName} {barber.lastName}
+                      </Text>
+                      <View style={styles.barberRating}>
+                        <Ionicons name="star" size={16} color={theme.colors.warning} />
+                        <Text style={styles.ratingText}>
+                          {barber.stats?.averageRating ? barber.stats.averageRating.toFixed(1) : '0.0'}
+                        </Text>
+                        <Text style={styles.reviewCount}>
+                          ({barber.stats?.totalReviews || 0})
+                        </Text>
+                      </View>
+                      {barber.distance && (
+                        <Text style={styles.distanceText}>
+                          {barber.distance.toFixed(1)} km uzaklıkta
+                        </Text>
+                      )}
+                      <Text style={styles.workingHours}>
+                        {getWorkingHours(barber.workingHours)}
+                      </Text>
+                      <TouchableOpacity
+                        style={styles.appointmentButton}
+                        onPress={() => router.push({
+                          pathname: '/barber/[id]',
+                          params: { id: barber.id }
+                        })}
+                      >
+                        <Text style={styles.appointmentButtonText}>Randevu Oluştur</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </>
+          )}
+        </View>
+      )}
+
       {/* Popular Barbers */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Popüler Kuaförler</Text>
-          <TouchableOpacity onPress={() => router.push('/barbers')}>
-            <Text style={styles.seeAllButton}>Tümünü Gör</Text>
+          <TouchableOpacity onPress={() => setShowAllPopularBarbers(!showAllPopularBarbers)}>
+            <Text style={styles.seeAllButton}>
+              {showAllPopularBarbers ? 'Daha Az Göster' : 'Tümünü Gör'}
+            </Text>
           </TouchableOpacity>
         </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.barbersList}>
+        <ScrollView 
+          horizontal={!showAllPopularBarbers} 
+          showsHorizontalScrollIndicator={false} 
+          style={[styles.barbersList, showAllPopularBarbers && styles.barbersListVertical]}
+        >
           {popularBarbers.map((barber) => (
             <TouchableOpacity
               key={barber.id}
-              style={styles.barberCard}
+              style={[styles.barberCard, showAllPopularBarbers && styles.barberCardVertical]}
               onPress={() => router.push({
                 pathname: '/barber/[id]',
                 params: { id: barber.id }
@@ -302,7 +612,7 @@ export default function HomeScreen() {
             >
               <Image
                 source={barber.photoURL || DEFAULT_IMAGES.barber}
-                style={styles.barberImage}
+                style={[styles.barberImage, showAllPopularBarbers && styles.barberImageVertical]}
               />
               <View style={styles.barberInfo}>
                 <Text style={styles.barberName}>
@@ -311,7 +621,7 @@ export default function HomeScreen() {
                 <View style={styles.barberRating}>
                   <Ionicons name="star" size={16} color={theme.colors.warning} />
                   <Text style={styles.ratingText}>
-                    {barber.stats?.averageRating.toFixed(1) || '0.0'}
+                    {barber.stats?.averageRating ? barber.stats.averageRating.toFixed(1) : '0.0'}
                   </Text>
                   <Text style={styles.reviewCount}>
                     ({barber.stats?.totalReviews || 0})
@@ -323,8 +633,8 @@ export default function HomeScreen() {
                 <TouchableOpacity
                   style={styles.appointmentButton}
                   onPress={() => router.push({
-                    pathname: '/create-appointment',
-                    params: { barberId: barber.id }
+                    pathname: '/barber/[id]',
+                    params: { id: barber.id }
                   })}
                 >
                   <Text style={styles.appointmentButtonText}>Randevu Oluştur</Text>
@@ -339,15 +649,21 @@ export default function HomeScreen() {
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Son Eklenen Kuaförler</Text>
-          <TouchableOpacity onPress={() => router.push('/barbers')}>
-            <Text style={styles.seeAllButton}>Tümünü Gör</Text>
+          <TouchableOpacity onPress={() => setShowAllRecentBarbers(!showAllRecentBarbers)}>
+            <Text style={styles.seeAllButton}>
+              {showAllRecentBarbers ? 'Daha Az Göster' : 'Tümünü Gör'}
+            </Text>
           </TouchableOpacity>
         </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.barbersList}>
+        <ScrollView 
+          horizontal={!showAllRecentBarbers} 
+          showsHorizontalScrollIndicator={false} 
+          style={[styles.barbersList, showAllRecentBarbers && styles.barbersListVertical]}
+        >
           {recentBarbers.map((barber) => (
             <TouchableOpacity
               key={barber.id}
-              style={styles.barberCard}
+              style={[styles.barberCard, showAllRecentBarbers && styles.barberCardVertical]}
               onPress={() => router.push({
                 pathname: '/barber/[id]',
                 params: { id: barber.id }
@@ -355,7 +671,7 @@ export default function HomeScreen() {
             >
               <Image
                 source={barber.photoURL || DEFAULT_IMAGES.barber}
-                style={styles.barberImage}
+                style={[styles.barberImage, showAllRecentBarbers && styles.barberImageVertical]}
               />
               <View style={styles.barberInfo}>
                 <Text style={styles.barberName}>
@@ -364,7 +680,7 @@ export default function HomeScreen() {
                 <View style={styles.barberRating}>
                   <Ionicons name="star" size={16} color={theme.colors.warning} />
                   <Text style={styles.ratingText}>
-                    {barber.stats?.averageRating.toFixed(1) || '0.0'}
+                    {barber.stats?.averageRating ? barber.stats.averageRating.toFixed(1) : '0.0'}
                   </Text>
                   <Text style={styles.reviewCount}>
                     ({barber.stats?.totalReviews || 0})
@@ -376,8 +692,8 @@ export default function HomeScreen() {
                 <TouchableOpacity
                   style={styles.appointmentButton}
                   onPress={() => router.push({
-                    pathname: '/create-appointment',
-                    params: { barberId: barber.id }
+                    pathname: '/barber/[id]',
+                    params: { id: barber.id }
                   })}
                 >
                   <Text style={styles.appointmentButtonText}>Randevu Oluştur</Text>
@@ -392,53 +708,80 @@ export default function HomeScreen() {
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Yakındaki Kuaförler</Text>
-          <TouchableOpacity onPress={() => router.push('/barbers')}>
-            <Text style={styles.seeAllButton}>Tümünü Gör</Text>
-          </TouchableOpacity>
-        </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.barbersList}>
-          {nearbyBarbers.map((barber) => (
-            <TouchableOpacity
-              key={barber.id}
-              style={styles.barberCard}
-              onPress={() => router.push({
-                pathname: '/barber/[id]',
-                params: { id: barber.id }
-              })}
-            >
-              <Image
-                source={barber.photoURL || DEFAULT_IMAGES.barber}
-                style={styles.barberImage}
-              />
-              <View style={styles.barberInfo}>
-                <Text style={styles.barberName}>
-                  {barber.firstName} {barber.lastName}
-                </Text>
-                <View style={styles.barberRating}>
-                  <Ionicons name="star" size={16} color={theme.colors.warning} />
-                  <Text style={styles.ratingText}>
-                    {barber.stats?.averageRating.toFixed(1) || '0.0'}
-                  </Text>
-                  <Text style={styles.reviewCount}>
-                    ({barber.stats?.totalReviews || 0})
-                  </Text>
-                </View>
-                <Text style={styles.workingHours}>
-                  {getWorkingHours(barber.workingHours)}
-                </Text>
-                <TouchableOpacity
-                  style={styles.appointmentButton}
-                  onPress={() => router.push({
-                    pathname: '/create-appointment',
-                    params: { barberId: barber.id }
-                  })}
-                >
-                  <Text style={styles.appointmentButtonText}>Randevu Oluştur</Text>
-                </TouchableOpacity>
-              </View>
+          {location && (
+            <TouchableOpacity onPress={() => setShowAllNearbyBarbers(!showAllNearbyBarbers)}>
+              <Text style={styles.seeAllButton}>
+                {showAllNearbyBarbers ? 'Daha Az Göster' : 'Tümünü Gör'}
+              </Text>
             </TouchableOpacity>
-          ))}
-        </ScrollView>
+          )}
+        </View>
+        {!location && !locationError && (
+          <TouchableOpacity 
+            style={styles.locationButton}
+            onPress={getLocation}
+          >
+            <Ionicons name="location" size={20} color={theme.colors.primary} />
+            <Text style={styles.locationButtonText}>Konum İzni Ver</Text>
+          </TouchableOpacity>
+        )}
+        {locationError && (
+          <Text style={styles.errorText}>{locationError}</Text>
+        )}
+        {location && (
+          <ScrollView 
+            horizontal={!showAllNearbyBarbers} 
+            showsHorizontalScrollIndicator={false} 
+            style={[styles.barbersList, showAllNearbyBarbers && styles.barbersListVertical]}
+          >
+            {nearbyBarbers.map((barber) => (
+              <TouchableOpacity
+                key={barber.id}
+                style={[styles.barberCard, showAllNearbyBarbers && styles.barberCardVertical]}
+                onPress={() => router.push({
+                  pathname: '/barber/[id]',
+                  params: { id: barber.id }
+                })}
+              >
+                <Image
+                  source={barber.photoURL || DEFAULT_IMAGES.barber}
+                  style={[styles.barberImage, showAllNearbyBarbers && styles.barberImageVertical]}
+                />
+                <View style={styles.barberInfo}>
+                  <Text style={styles.barberName}>
+                    {barber.firstName} {barber.lastName}
+                  </Text>
+                  <View style={styles.barberRating}>
+                    <Ionicons name="star" size={16} color={theme.colors.warning} />
+                    <Text style={styles.ratingText}>
+                      {barber.stats?.averageRating ? barber.stats.averageRating.toFixed(1) : '0.0'}
+                    </Text>
+                    <Text style={styles.reviewCount}>
+                      ({barber.stats?.totalReviews || 0})
+                    </Text>
+                  </View>
+                  {barber.distance && (
+                    <Text style={styles.distanceText}>
+                      {barber.distance.toFixed(1)} km uzaklıkta
+                    </Text>
+                  )}
+                  <Text style={styles.workingHours}>
+                    {getWorkingHours(barber.workingHours)}
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.appointmentButton}
+                    onPress={() => router.push({
+                      pathname: '/barber/[id]',
+                      params: { id: barber.id }
+                    })}
+                  >
+                    <Text style={styles.appointmentButtonText}>Randevu Oluştur</Text>
+                  </TouchableOpacity>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
       </View>
 
       {isAuthenticated && auth.currentUser && (
@@ -601,6 +944,12 @@ const styles = StyleSheet.create({
   barbersList: {
     paddingRight: 16,
     gap: 16,
+    marginHorizontal: -16,
+  },
+  barbersListVertical: {
+    flexDirection: 'column',
+    paddingRight: 0,
+    marginHorizontal: 0,
   },
   barberCard: {
     width: width * 0.8,
@@ -614,10 +963,21 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.2,
     shadowRadius: 1.41,
+    marginHorizontal: 8,
+  },
+  barberCardVertical: {
+    width: '100%',
+    flexDirection: 'row',
+    marginBottom: 16,
+    marginHorizontal: 0,
   },
   barberImage: {
     width: '100%',
     height: 200,
+  },
+  barberImageVertical: {
+    width: 120,
+    height: 120,
   },
   barberInfo: {
     padding: 16,
@@ -636,7 +996,8 @@ const styles = StyleSheet.create({
   ratingText: {
     marginLeft: 4,
     fontSize: 14,
-    color: theme.colors.textSecondary,
+    color: theme.colors.text,
+    fontWeight: '500',
   },
   reviewCount: {
     marginLeft: 4,
@@ -711,5 +1072,40 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',
+  },
+  locationButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    backgroundColor: theme.colors.primary + '20',
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  locationButtonText: {
+    marginLeft: 8,
+    color: theme.colors.primary,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  errorText: {
+    color: theme.colors.error,
+    fontSize: 14,
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  distanceText: {
+    fontSize: 14,
+    color: theme.colors.textSecondary,
+    marginTop: 4,
+  },
+  clearButton: {
+    padding: 8,
+  },
+  subSectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: theme.colors.text,
+    marginBottom: 12,
   },
 });

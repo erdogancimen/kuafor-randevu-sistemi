@@ -14,6 +14,7 @@ import { useRouter } from 'expo-router';
 import { theme } from '@/utils/theme';
 import { Ionicons } from '@expo/vector-icons';
 import { getFirestore, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
+import { getAuth, signOut } from 'firebase/auth';
 
 // Varsayılan görseller için
 const DEFAULT_IMAGES = {
@@ -58,7 +59,26 @@ export default function HomeScreen() {
   const [recentBarbers, setRecentBarbers] = useState<Barber[]>([]);
   const [nearbyBarbers, setNearbyBarbers] = useState<Barber[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const router = useRouter();
+
+  const handleSignOut = async () => {
+    try {
+      const auth = getAuth();
+      await signOut(auth);
+      router.replace('/');
+    } catch (error) {
+      console.error('Çıkış yapılırken hata oluştu:', error);
+    }
+  };
+
+  useEffect(() => {
+    const auth = getAuth();
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      setIsAuthenticated(!!user);
+    });
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     fetchBarbers();
@@ -79,7 +99,7 @@ export default function HomeScreen() {
       const barbers = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
-        photoURL: doc.data().photoURL || DEFAULT_IMAGES.barber,
+        photoURL: DEFAULT_IMAGES.barber,
       })) as Barber[];
 
       setPopularBarbers(barbers.slice(0, 3));
@@ -124,6 +144,25 @@ export default function HomeScreen() {
 
   return (
     <ScrollView style={styles.container}>
+      {isAuthenticated && (
+        <View style={styles.header}>
+          <TouchableOpacity 
+            style={styles.profileButton}
+            onPress={() => router.push('/profile')}
+          >
+            <Ionicons name="person-circle-outline" size={24} color={theme.colors.text} />
+            <Text style={styles.profileText}>Profilim</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.logoutButton}
+            onPress={handleSignOut}
+          >
+            <Ionicons name="log-out-outline" size={24} color={theme.colors.error} />
+            <Text style={styles.logoutText}>Çıkış Yap</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Hero Section */}
       <View style={styles.hero}>
         <Image
@@ -136,12 +175,14 @@ export default function HomeScreen() {
           <Text style={styles.heroSubtitle}>
             Size en yakın kuaförleri bulun, değerlendirmeleri inceleyin ve hemen randevu alın.
           </Text>
-          <TouchableOpacity 
-            style={styles.loginButton}
-            onPress={() => router.push('/login')}
-          >
-            <Text style={styles.loginButtonText}>Giriş Yap</Text>
-          </TouchableOpacity>
+          {!isAuthenticated && (
+            <TouchableOpacity 
+              style={styles.loginButton}
+              onPress={() => router.push('/login')}
+            >
+              <Text style={styles.loginButtonText}>Giriş Yap</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
@@ -211,7 +252,10 @@ export default function HomeScreen() {
             <TouchableOpacity
               key={barber.id}
               style={styles.barberCard}
-              onPress={() => router.push(`/barber/${barber.id}`)}
+              onPress={() => router.push({
+                pathname: '/barber/[id]',
+                params: { id: barber.id }
+              })}
             >
               <Image
                 source={barber.photoURL || DEFAULT_IMAGES.barber}
@@ -221,13 +265,13 @@ export default function HomeScreen() {
                 <Text style={styles.barberName}>
                   {barber.firstName} {barber.lastName}
                 </Text>
-                <View style={styles.ratingContainer}>
+                <View style={styles.barberRating}>
                   <Ionicons name="star" size={16} color={theme.colors.warning} />
                   <Text style={styles.ratingText}>
-                    {barber.stats?.averageRating.toFixed(1) || barber.rating.toFixed(1)}
+                    {barber.stats?.averageRating.toFixed(1) || '0.0'}
                   </Text>
                   <Text style={styles.reviewCount}>
-                    ({barber.stats?.totalReviews || barber.reviews})
+                    ({barber.stats?.totalReviews || 0})
                   </Text>
                 </View>
                 <Text style={styles.workingHours}>
@@ -239,7 +283,7 @@ export default function HomeScreen() {
         </ScrollView>
       </View>
 
-      {/* Recent Barbers Section */}
+      {/* Recent Barbers */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Son Eklenen Kuaförler</Text>
@@ -247,43 +291,84 @@ export default function HomeScreen() {
             <Text style={styles.seeAllButton}>Tümünü Gör</Text>
           </TouchableOpacity>
         </View>
-
-        <View style={styles.recentBarbersContainer}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.barbersList}>
           {recentBarbers.map((barber) => (
-            <TouchableOpacity 
+            <TouchableOpacity
               key={barber.id}
-              style={styles.recentBarberCard}
-              onPress={() => router.push(`/barber/${barber.id}`)}
+              style={styles.barberCard}
+              onPress={() => router.push({
+                pathname: '/barber/[id]',
+                params: { id: barber.id }
+              })}
             >
               <Image
-                source={{ uri: barber.photoURL }}
-                style={styles.recentBarberImage}
-                resizeMode="cover"
+                source={barber.photoURL || DEFAULT_IMAGES.barber}
+                style={styles.barberImage}
               />
-              <View style={styles.recentBarberInfo}>
-                <Text style={styles.recentBarberName}>
+              <View style={styles.barberInfo}>
+                <Text style={styles.barberName}>
                   {barber.firstName} {barber.lastName}
                 </Text>
-                <View style={styles.recentBarberRating}>
-                <Ionicons name="star" size={16} color={theme.colors.warning} />
-                  <Text style={styles.recentRatingText}>
-                    {barber.stats?.averageRating.toFixed(1) || '0.0'} ({barber.stats?.totalReviews || 0})
+                <View style={styles.barberRating}>
+                  <Ionicons name="star" size={16} color={theme.colors.warning} />
+                  <Text style={styles.ratingText}>
+                    {barber.stats?.averageRating.toFixed(1) || '0.0'}
+                  </Text>
+                  <Text style={styles.reviewCount}>
+                    ({barber.stats?.totalReviews || 0})
                   </Text>
                 </View>
-                <View style={styles.recentBarberLocation}>
-                <Ionicons name="location" size={16} color={theme.colors.textSecondary} />
-                  <Text style={styles.recentLocationText}>{barber.address}</Text>
-                </View>
-                <View style={styles.recentBarberHours}>
-                <Ionicons name="time" size={16} color={theme.colors.textSecondary} />
-                  <Text style={styles.recentHoursText}>
-                    {getWorkingHours(barber.workingHours)}
-                  </Text>
-                </View>
+                <Text style={styles.workingHours}>
+                  {getWorkingHours(barber.workingHours)}
+                </Text>
               </View>
             </TouchableOpacity>
           ))}
+        </ScrollView>
+      </View>
+
+      {/* Nearby Barbers */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Yakındaki Kuaförler</Text>
+          <TouchableOpacity onPress={() => router.push('/barbers')}>
+            <Text style={styles.seeAllButton}>Tümünü Gör</Text>
+          </TouchableOpacity>
         </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.barbersList}>
+          {nearbyBarbers.map((barber) => (
+            <TouchableOpacity
+              key={barber.id}
+              style={styles.barberCard}
+              onPress={() => router.push({
+                pathname: '/barber/[id]',
+                params: { id: barber.id }
+              })}
+            >
+              <Image
+                source={barber.photoURL || DEFAULT_IMAGES.barber}
+                style={styles.barberImage}
+              />
+              <View style={styles.barberInfo}>
+                <Text style={styles.barberName}>
+                  {barber.firstName} {barber.lastName}
+                </Text>
+                <View style={styles.barberRating}>
+                  <Ionicons name="star" size={16} color={theme.colors.warning} />
+                  <Text style={styles.ratingText}>
+                    {barber.stats?.averageRating.toFixed(1) || '0.0'}
+                  </Text>
+                  <Text style={styles.reviewCount}>
+                    ({barber.stats?.totalReviews || 0})
+                  </Text>
+                </View>
+                <Text style={styles.workingHours}>
+                  {getWorkingHours(barber.workingHours)}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       </View>
     </ScrollView>
   );
@@ -464,7 +549,7 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     marginBottom: 8,
   },
-  ratingContainer: {
+  barberRating: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 8,
@@ -484,58 +569,29 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: theme.colors.textSecondary,
   },
-  recentBarbersContainer: {
-    gap: 16,
-  },
-  recentBarberCard: {
+  header: {
     flexDirection: 'row',
-    backgroundColor: theme.colors.surface,
-    borderRadius: 12,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: theme.colors.background,
   },
-  recentBarberImage: {
-    width: 100,
-    height: 100,
+  profileButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
-  recentBarberInfo: {
-    flex: 1,
-    padding: 12,
-  },
-  recentBarberName: {
+  profileText: {
     fontSize: 16,
-    fontWeight: 'bold',
     color: theme.colors.text,
-    marginBottom: 4,
   },
-  recentBarberRating: {
+  logoutButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4,
+    gap: 8,
   },
-  recentRatingText: {
-    marginLeft: 4,
-    fontSize: 14,
-    color: theme.colors.textSecondary,
-  },
-  recentBarberLocation: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  recentLocationText: {
-    marginLeft: 4,
-    fontSize: 14,
-    color: theme.colors.textSecondary,
-  },
-  recentBarberHours: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  recentHoursText: {
-    marginLeft: 4,
-    fontSize: 14,
-    color: theme.colors.textSecondary,
+  logoutText: {
+    fontSize: 16,
+    color: theme.colors.error,
   },
 });

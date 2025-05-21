@@ -344,8 +344,20 @@ export default function BarberDetailPage() {
 
   const handleBooking = async () => {
     if (!auth.currentUser) {
-      Alert.alert('Hata', 'Lütfen önce giriş yapın');
-      router.push('/login');
+      Alert.alert(
+        'Giriş Gerekli',
+        'Randevu oluşturmak için giriş yapmanız gerekmektedir.',
+        [
+          {
+            text: 'İptal',
+            style: 'cancel'
+          },
+          {
+            text: 'Giriş Yap',
+            onPress: () => router.push('/login')
+          }
+        ]
+      );
       return;
     }
 
@@ -478,6 +490,9 @@ export default function BarberDetailPage() {
         {/* Çalışan Seçimi */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Çalışan Seçimi</Text>
+          <Text style={styles.sectionDescription}>
+            Randevu almak ve hizmetleri görmek için çalışan seçin
+          </Text>
           <TouchableOpacity
             style={styles.pickerContainer}
             onPress={() => setShowEmployeePicker(true)}
@@ -822,6 +837,11 @@ const styles = StyleSheet.create({
   sectionTitle: {
     ...theme.typography.h3,
     color: theme.colors.text,
+    marginBottom: theme.spacing.md,
+  },
+  sectionDescription: {
+    ...theme.typography.body,
+    color: theme.colors.textSecondary,
     marginBottom: theme.spacing.md,
   },
   pickerContainer: {

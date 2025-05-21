@@ -14,6 +14,7 @@ import { theme } from '@/utils/theme';
 import { Button } from '@/components/common/Button';
 import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
 import { Ionicons } from '@expo/vector-icons';
+import { getFirestore, doc, getDoc } from 'firebase/firestore';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -34,8 +35,25 @@ export default function LoginScreen() {
 
     try {
       const auth = getAuth();
-      await signInWithEmailAndPassword(auth, email, password);
-      router.replace('/(tabs)');
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const db = getFirestore();
+      const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
+      
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        console.log('Kullanıcı verisi:', userData);
+        if (userData.role === 'barber') {
+          router.replace('/barber/profile');
+        } else if (userData.role === 'employee') {
+          router.replace('/employee/profile');
+        } else if (userData.role === 'customer') {
+          router.replace('/');
+        } else {
+          setError(`Geçersiz kullanıcı rolü: ${userData.role}. Lütfen yönetici ile iletişime geçin.`);
+        }
+      } else {
+        setError('Kullanıcı bilgileri bulunamadı. Lütfen yönetici ile iletişime geçin.');
+      }
     } catch (err: any) {
       let errorMessage = 'Giriş yapılırken bir hata oluştu';
       

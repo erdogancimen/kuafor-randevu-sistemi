@@ -7,12 +7,13 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { theme } from '@/utils/theme';
 import { Ionicons } from '@expo/vector-icons';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, collection, query, where, getDocs, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { getFirestore, collection, query, where, getDocs, doc, updateDoc, serverTimestamp, orderBy } from 'firebase/firestore';
 
 interface Appointment {
   id: string;
@@ -47,7 +48,8 @@ export default function BarberAppointmentsScreen() {
         const appointmentsQuery = query(
           collection(db, 'appointments'),
           where('barberId', '==', user.uid),
-          where('employeeId', 'in', [user.uid, null])
+          where('employeeId', 'in', [user.uid, null]),
+          orderBy('createdAt', 'desc')
         );
 
         const querySnapshot = await getDocs(appointmentsQuery);
@@ -157,85 +159,84 @@ export default function BarberAppointmentsScreen() {
             {appointments.map((appointment) => (
               <View key={appointment.id} style={styles.appointmentCard}>
                 <View style={styles.appointmentHeader}>
-                  <View style={styles.appointmentInfo}>
-                    <Text style={styles.appointmentName}>{appointment.userName || 'Müşteri'}</Text>
-                    <Text style={styles.appointmentService}>{appointment.service}</Text>
+                  <View style={styles.customerInfo}>
+                    <Image
+                      source={require('@/assets/images/default-customer.jpg')}
+                      style={styles.customerImage}
+                    />
+                    <View>
+                      <Text style={styles.customerName}>{appointment.userName || 'Müşteri'}</Text>
+                      <Text style={styles.serviceName}>{appointment.service}</Text>
+                      <View style={styles.appointmentDetails}>
+                        <View style={styles.detailItem}>
+                          <Ionicons name="calendar-outline" size={16} color={theme.colors.textSecondary} />
+                          <Text style={styles.detailText}>{appointment.date}</Text>
+                        </View>
+                        <View style={styles.detailItem}>
+                          <Ionicons name="time-outline" size={16} color={theme.colors.textSecondary} />
+                          <Text style={styles.detailText}>{appointment.time}</Text>
+                        </View>
+                        <View style={styles.detailItem}>
+                          <Text style={styles.detailText}>{appointment.duration} dk</Text>
+                        </View>
+                      </View>
+                    </View>
                   </View>
-                  <View style={[styles.statusBadge, { backgroundColor: getStatusColor(appointment.status) + '20' }]}>
-                    <Text style={[styles.statusText, { color: getStatusColor(appointment.status) }]}>
-                      {getStatusText(appointment.status)}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.appointmentDetails}>
-                  <View style={styles.detailRow}>
-                    <Ionicons name="calendar-outline" size={20} color={theme.colors.textSecondary} />
-                    <Text style={styles.detailText}>{appointment.date}</Text>
-                  </View>
-                  <View style={styles.detailRow}>
-                    <Ionicons name="time-outline" size={20} color={theme.colors.textSecondary} />
-                    <Text style={styles.detailText}>{appointment.time}</Text>
-                  </View>
-                  <View style={styles.detailRow}>
-                    <Ionicons name="hourglass-outline" size={20} color={theme.colors.textSecondary} />
-                    <Text style={styles.detailText}>{appointment.duration} dakika</Text>
-                  </View>
-                  <View style={styles.detailRow}>
-                    <Ionicons name="cash-outline" size={20} color={theme.colors.textSecondary} />
-                    <Text style={styles.detailText}>{appointment.price} TL</Text>
-                  </View>
-                </View>
-
-                {appointment.status === 'pending' && (
-                  <View style={styles.actionButtons}>
-                    <TouchableOpacity
-                      style={[styles.actionButton, styles.confirmButton]}
-                      onPress={() => handleStatusUpdate(appointment.id, 'confirmed')}
-                      disabled={updating === appointment.id}
-                    >
-                      {updating === appointment.id ? (
-                        <ActivityIndicator color={theme.colors.background} />
-                      ) : (
-                        <>
-                          <Ionicons name="checkmark" size={20} color={theme.colors.background} />
-                          <Text style={styles.actionButtonText}>Onayla</Text>
-                        </>
-                      )}
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.actionButton, styles.cancelButton]}
-                      onPress={() => handleStatusUpdate(appointment.id, 'cancelled')}
-                      disabled={updating === appointment.id}
-                    >
-                      {updating === appointment.id ? (
-                        <ActivityIndicator color={theme.colors.background} />
-                      ) : (
-                        <>
-                          <Ionicons name="close" size={20} color={theme.colors.background} />
-                          <Text style={styles.actionButtonText}>Reddet</Text>
-                        </>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-                )}
-
-                {appointment.status === 'confirmed' && (
-                  <TouchableOpacity
-                    style={[styles.actionButton, styles.completeButton]}
-                    onPress={() => handleStatusUpdate(appointment.id, 'completed')}
-                    disabled={updating === appointment.id}
-                  >
-                    {updating === appointment.id ? (
-                      <ActivityIndicator color={theme.colors.background} />
-                    ) : (
-                      <>
-                        <Ionicons name="checkmark-circle" size={20} color={theme.colors.background} />
-                        <Text style={styles.actionButtonText}>Tamamlandı</Text>
-                      </>
+                  <View style={styles.appointmentActions}>
+                    <Text style={styles.price}>{appointment.price} TL</Text>
+                    <View style={[styles.statusBadge, { backgroundColor: getStatusColor(appointment.status) }]}>
+                      <Text style={styles.statusText}>{getStatusText(appointment.status)}</Text>
+                    </View>
+                    {appointment.status === 'pending' && (
+                      <View style={styles.actionButtons}>
+                        <TouchableOpacity
+                          style={[styles.actionButton, styles.confirmButton]}
+                          onPress={() => handleStatusUpdate(appointment.id, 'confirmed')}
+                          disabled={updating === appointment.id}
+                        >
+                          {updating === appointment.id ? (
+                            <ActivityIndicator size="small" color={theme.colors.background} />
+                          ) : (
+                            <>
+                              <Ionicons name="checkmark" size={20} color={theme.colors.background} />
+                              <Text style={styles.actionButtonText}>Onayla</Text>
+                            </>
+                          )}
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.actionButton, styles.cancelButton]}
+                          onPress={() => handleStatusUpdate(appointment.id, 'cancelled')}
+                          disabled={updating === appointment.id}
+                        >
+                          {updating === appointment.id ? (
+                            <ActivityIndicator size="small" color={theme.colors.background} />
+                          ) : (
+                            <>
+                              <Ionicons name="close" size={20} color={theme.colors.background} />
+                              <Text style={styles.actionButtonText}>Reddet</Text>
+                            </>
+                          )}
+                        </TouchableOpacity>
+                      </View>
                     )}
-                  </TouchableOpacity>
-                )}
+                    {appointment.status === 'confirmed' && (
+                      <TouchableOpacity
+                        style={[styles.actionButton, styles.completeButton]}
+                        onPress={() => handleStatusUpdate(appointment.id, 'completed')}
+                        disabled={updating === appointment.id}
+                      >
+                        {updating === appointment.id ? (
+                          <ActivityIndicator size="small" color={theme.colors.background} />
+                        ) : (
+                          <>
+                            <Ionicons name="checkmark" size={20} color={theme.colors.background} />
+                            <Text style={styles.actionButtonText}>Tamamlayın</Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
               </View>
             ))}
           </View>
@@ -302,67 +303,79 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.border,
   },
   appointmentHeader: {
+    gap: theme.spacing.md,
+  },
+  customerInfo: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: theme.spacing.md,
+    gap: theme.spacing.md,
   },
-  appointmentInfo: {
-    flex: 1,
+  customerImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
   },
-  appointmentName: {
-    ...theme.typography.h4,
+  customerName: {
+    ...theme.typography.body,
     color: theme.colors.text,
-    marginBottom: theme.spacing.xs,
+    fontWeight: '600',
   },
-  appointmentService: {
+  serviceName: {
     ...theme.typography.body,
     color: theme.colors.textSecondary,
+    marginTop: theme.spacing.xs,
+  },
+  appointmentDetails: {
+    flexDirection: 'row',
+    gap: theme.spacing.md,
+    marginTop: theme.spacing.sm,
+  },
+  detailItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.xs,
+  },
+  detailText: {
+    ...theme.typography.bodySmall,
+    color: theme.colors.textSecondary,
+  },
+  appointmentActions: {
+    alignItems: 'flex-end',
+    gap: theme.spacing.sm,
+  },
+  price: {
+    ...theme.typography.h4,
+    color: theme.colors.text,
   },
   statusBadge: {
     paddingHorizontal: theme.spacing.sm,
     paddingVertical: theme.spacing.xs,
-    borderRadius: theme.borderRadius.sm,
+    borderRadius: theme.borderRadius.full,
   },
   statusText: {
     ...theme.typography.bodySmall,
+    color: theme.colors.background,
     fontWeight: '600',
-  },
-  appointmentDetails: {
-    gap: theme.spacing.sm,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  detailText: {
-    ...theme.typography.body,
-    color: theme.colors.text,
-    marginLeft: theme.spacing.sm,
   },
   actionButtons: {
     flexDirection: 'row',
-    gap: theme.spacing.md,
-    marginTop: theme.spacing.md,
+    gap: theme.spacing.sm,
   },
   actionButton: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    padding: theme.spacing.md,
+    gap: theme.spacing.xs,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
     borderRadius: theme.borderRadius.md,
-    gap: theme.spacing.sm,
   },
   confirmButton: {
     backgroundColor: theme.colors.success,
   },
   cancelButton: {
-    backgroundColor: theme.colors.error,
+    backgroundColor: theme.colors.destructive,
   },
   completeButton: {
     backgroundColor: theme.colors.primary,
-    marginTop: theme.spacing.md,
   },
   actionButtonText: {
     ...theme.typography.body,

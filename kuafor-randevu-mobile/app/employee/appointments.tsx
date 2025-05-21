@@ -281,7 +281,7 @@ export default function EmployeeAppointmentsScreen() {
                         ) : (
                           <>
                             <Ionicons name="checkmark" size={20} color={theme.colors.background} />
-                            <Text style={styles.actionButtonText}>Tamamlandı</Text>
+                            <Text style={styles.actionButtonText}>Tamamlayın</Text>
                           </>
                         )}
                       </TouchableOpacity>

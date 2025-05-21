@@ -102,6 +102,7 @@ export default function RootLayout() {
           <Stack.Screen name="employee/profile" options={{ headerShown: false }} />
           <Stack.Screen name="employee/appointments" options={{ headerShown: false }} />
           <Stack.Screen name="profile/edit" options={{ headerShown: false }} />
+          <Stack.Screen name="appointments" options={{ headerShown: false }} />
         </Stack>
       </View>
     </ThemeProvider>

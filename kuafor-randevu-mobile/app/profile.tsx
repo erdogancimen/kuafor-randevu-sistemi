@@ -9,6 +9,7 @@ import {
   Alert,
   ActivityIndicator,
   TextInput,
+  Modal,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { theme } from '@/utils/theme';
@@ -16,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { auth, db } from '@/config/firebase';
 import { doc, getDoc, updateDoc, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
 import { updateProfile } from 'firebase/auth';
+import NotificationList from '@/components/NotificationList';
 
 interface CustomerProfile {
   name: string;
@@ -61,6 +63,9 @@ export default function CustomerProfile() {
     monthlyAppointments: 0,
     lastAppointment: null
   });
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const [notificationCount, setNotificationCount] = useState(0);
   const router = useRouter();
 
   useEffect(() => {
@@ -218,6 +223,15 @@ export default function CustomerProfile() {
     }
   };
 
+  const handleMenuPress = () => {
+    setShowMenu(!showMenu);
+  };
+
+  const handleMenuItemPress = (route: string) => {
+    setShowMenu(false);
+    router.push(route);
+  };
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -238,17 +252,72 @@ export default function CustomerProfile() {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Profilim</Text>
-        <View style={styles.headerRight}>
-          <TouchableOpacity onPress={() => router.push('/')} style={styles.headerButton}>
-            <Ionicons name="home-outline" size={20} color={theme.colors.primary} />
-            <Text style={[styles.headerButtonText, { color: theme.colors.primary }]}>Anasayfa</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={handleSignOut} style={[styles.headerButton, styles.logoutButton]}>
-            <Ionicons name="log-out-outline" size={20} color={theme.colors.destructive} />
-            <Text style={[styles.headerButtonText, styles.logoutText]}>Çıkış Yap</Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity onPress={handleMenuPress} style={styles.menuButton}>
+          <Ionicons name="menu" size={24} color={theme.colors.text} />
+        </TouchableOpacity>
       </View>
+
+      {/* Hamburger Menu Modal */}
+      <Modal
+        visible={showMenu}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowMenu(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowMenu(false)}
+        >
+          <View style={styles.menuContainer}>
+            <View style={styles.menuHeader}>
+              <Text style={styles.menuTitle}>Menü</Text>
+              <TouchableOpacity onPress={() => setShowMenu(false)}>
+                <Ionicons name="close" size={24} color={theme.colors.text} />
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setShowMenu(false);
+                setShowNotifications(true);
+              }}
+            >
+              <Ionicons name="notifications-outline" size={24} color={theme.colors.text} />
+              <Text style={styles.menuItemText}>Bildirimler</Text>
+              {notificationCount > 0 && (
+                <View style={styles.notificationBadge}>
+                  <Text style={styles.notificationBadgeText}>
+                    {notificationCount > 99 ? '99+' : notificationCount}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => handleMenuItemPress('/')}
+            >
+              <Ionicons name="home-outline" size={24} color={theme.colors.text} />
+              <Text style={styles.menuItemText}>Anasayfa</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => handleMenuItemPress('/appointments')}
+            >
+              <Ionicons name="calendar-outline" size={24} color={theme.colors.text} />
+              <Text style={styles.menuItemText}>Randevularım</Text>
+            </TouchableOpacity>
+            <View style={styles.menuDivider} />
+            <TouchableOpacity
+              style={[styles.menuItem, styles.logoutButton]}
+              onPress={handleSignOut}
+            >
+              <Ionicons name="log-out-outline" size={24} color={theme.colors.destructive} />
+              <Text style={[styles.menuItemText, styles.logoutText]}>Çıkış Yap</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       <ScrollView style={styles.content}>
         <View style={styles.profileSection}>
@@ -403,6 +472,15 @@ export default function CustomerProfile() {
           </View>
         </View>
       </ScrollView>
+
+      {auth.currentUser && (
+        <NotificationList
+          userId={auth.currentUser.uid}
+          isVisible={showNotifications}
+          onClose={() => setShowNotifications(false)}
+          onNotificationCountChange={setNotificationCount}
+        />
+      )}
     </View>
   );
 }
@@ -416,35 +494,61 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: theme.spacing.md,
+    padding: theme.spacing.lg,
     backgroundColor: theme.colors.background,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
   },
   headerTitle: {
-    ...theme.typography.h3,
+    ...theme.typography.h2,
     color: theme.colors.text,
   },
-  headerRight: {
+  menuButton: {
+    padding: theme.spacing.sm,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  menuContainer: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: '80%',
+    height: '100%',
+    backgroundColor: theme.colors.surface,
+    padding: theme.spacing.lg,
+  },
+  menuHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: theme.spacing.xl,
+  },
+  menuTitle: {
+    ...theme.typography.h2,
+    color: theme.colors.text,
+  },
+  menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: theme.spacing.sm,
+    paddingVertical: theme.spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    position: 'relative',
   },
-  headerButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: theme.colors.background,
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: theme.spacing.xs,
-    borderRadius: theme.borderRadius.md,
-    gap: theme.spacing.xs,
+  menuItemText: {
+    ...theme.typography.body,
+    color: theme.colors.text,
+    marginLeft: theme.spacing.md,
   },
-  headerButtonText: {
-    ...theme.typography.bodySmall,
-    fontWeight: '600',
+  menuDivider: {
+    height: 1,
+    backgroundColor: theme.colors.border,
+    marginVertical: theme.spacing.md,
   },
   logoutButton: {
-    backgroundColor: theme.colors.destructive + '20',
+    marginTop: theme.spacing.sm,
   },
   logoutText: {
     color: theme.colors.destructive,
@@ -668,5 +772,21 @@ const styles = StyleSheet.create({
   statSubtext: {
     ...theme.typography.bodySmall,
     color: theme.colors.textSecondary,
+  },
+  notificationBadge: {
+    position: 'absolute',
+    right: theme.spacing.md,
+    backgroundColor: theme.colors.error,
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  notificationBadgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
 }); 

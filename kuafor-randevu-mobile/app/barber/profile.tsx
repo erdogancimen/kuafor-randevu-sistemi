@@ -17,6 +17,7 @@ import { Button } from '@/components/common/Button';
 import { Ionicons } from '@expo/vector-icons';
 import { getAuth, signOut } from 'firebase/auth';
 import { getFirestore, doc, getDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import NotificationList from '@/components/NotificationList';
 
 const defaultImage = require('@/assets/images/default.jpg');
 
@@ -83,6 +84,8 @@ export default function BarberProfileScreen() {
   const [editedProfile, setEditedProfile] = useState<BarberProfile | null>(null);
   const [editedServices, setEditedServices] = useState<BarberProfile['services']>([]);
   const [editedWorkingHours, setEditedWorkingHours] = useState<BarberProfile['workingHours']>({});
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [notificationCount, setNotificationCount] = useState(0);
 
   // Varsayılan çalışma saatleri
   const defaultWorkingHours = {
@@ -334,8 +337,15 @@ export default function BarberProfileScreen() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Kuaför Profili</Text>
         <View style={styles.headerRight}>
-          <TouchableOpacity onPress={handleNotificationsPress} style={styles.notificationButton}>
+          <TouchableOpacity onPress={() => setShowNotifications(true)} style={styles.notificationButton}>
             <Ionicons name="notifications-outline" size={24} color={theme.colors.text} />
+            {notificationCount > 0 && (
+              <View style={styles.notificationBadge}>
+                <Text style={styles.notificationBadgeText}>
+                  {notificationCount > 99 ? '99+' : notificationCount}
+                </Text>
+              </View>
+            )}
           </TouchableOpacity>
           <TouchableOpacity onPress={handleMenuPress} style={styles.menuButton}>
             <Ionicons name="menu" size={24} color={theme.colors.text} />
@@ -422,8 +432,13 @@ export default function BarberProfileScreen() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Profil Bilgileri</Text>
-            <TouchableOpacity onPress={() => setEditingProfile(!editingProfile)}>
-              <Ionicons name={editingProfile ? "checkmark" : "pencil"} size={24} color={theme.colors.primary} />
+            <TouchableOpacity 
+              style={styles.editButton}
+              onPress={() => setEditingProfile(!editingProfile)}
+            >
+              <Text style={styles.editButtonText}>
+                {editingProfile ? 'İptal' : 'Düzenle'}
+              </Text>
             </TouchableOpacity>
           </View>
           <View style={styles.infoContainer}>
@@ -483,8 +498,13 @@ export default function BarberProfileScreen() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Hizmetler</Text>
-            <TouchableOpacity onPress={() => setEditingServices(!editingServices)}>
-              <Ionicons name={editingServices ? "checkmark" : "pencil"} size={24} color={theme.colors.primary} />
+            <TouchableOpacity 
+              style={styles.editButton}
+              onPress={() => setEditingServices(!editingServices)}
+            >
+              <Text style={styles.editButtonText}>
+                {editingServices ? 'İptal' : 'Düzenle'}
+              </Text>
             </TouchableOpacity>
           </View>
           <View style={styles.servicesContainer}>
@@ -607,8 +627,13 @@ export default function BarberProfileScreen() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Çalışma Saatleri</Text>
-            <TouchableOpacity onPress={() => setEditingWorkingHours(!editingWorkingHours)}>
-              <Ionicons name={editingWorkingHours ? "checkmark" : "pencil"} size={24} color={theme.colors.primary} />
+            <TouchableOpacity 
+              style={styles.editButton}
+              onPress={() => setEditingWorkingHours(!editingWorkingHours)}
+            >
+              <Text style={styles.editButtonText}>
+                {editingWorkingHours ? 'İptal' : 'Düzenle'}
+              </Text>
             </TouchableOpacity>
           </View>
           <View style={styles.workingHoursContainer}>
@@ -712,6 +737,15 @@ export default function BarberProfileScreen() {
           </View>
         </View>
       </ScrollView>
+
+      {auth.currentUser && (
+        <NotificationList
+          userId={auth.currentUser.uid}
+          isVisible={showNotifications}
+          onClose={() => setShowNotifications(false)}
+          onNotificationCountChange={setNotificationCount}
+        />
+      )}
     </View>
   );
 }
@@ -744,6 +778,24 @@ const styles = StyleSheet.create({
   },
   notificationButton: {
     padding: theme.spacing.sm,
+    position: 'relative',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    backgroundColor: theme.colors.error,
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  notificationBadgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
   modalOverlay: {
     flex: 1,
@@ -1131,5 +1183,16 @@ const styles = StyleSheet.create({
     height: 40,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  editButton: {
+    backgroundColor: theme.colors.primary,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    borderRadius: theme.borderRadius.md,
+  },
+  editButtonText: {
+    ...theme.typography.body,
+    color: theme.colors.primaryForeground,
+    fontWeight: '600',
   },
 }); 

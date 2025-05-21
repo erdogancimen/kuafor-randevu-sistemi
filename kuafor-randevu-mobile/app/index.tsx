@@ -13,8 +13,9 @@ import {
 import { useRouter } from 'expo-router';
 import { theme } from '@/utils/theme';
 import { Ionicons } from '@expo/vector-icons';
-import { getFirestore, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
+import { getFirestore, collection, query, where, orderBy, limit, getDocs, getDoc, doc } from 'firebase/firestore';
 import { getAuth, signOut } from 'firebase/auth';
+import NotificationList from '@/components/NotificationList';
 
 // Varsayılan görseller için
 const DEFAULT_IMAGES = {
@@ -60,11 +61,14 @@ export default function HomeScreen() {
   const [nearbyBarbers, setNearbyBarbers] = useState<Barber[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [notificationCount, setNotificationCount] = useState(0);
   const router = useRouter();
+  const auth = getAuth();
 
   const handleSignOut = async () => {
     try {
-      const auth = getAuth();
       await signOut(auth);
       router.replace('/');
     } catch (error) {
@@ -73,9 +77,17 @@ export default function HomeScreen() {
   };
 
   useEffect(() => {
-    const auth = getAuth();
-    const unsubscribe = auth.onAuthStateChanged((user) => {
+    const unsubscribe = auth.onAuthStateChanged(async (user) => {
       setIsAuthenticated(!!user);
+      if (user) {
+        const db = getFirestore();
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        if (userDoc.exists()) {
+          setUserRole(userDoc.data().role);
+        }
+      } else {
+        setUserRole(null);
+      }
     });
     return () => unsubscribe();
   }, []);
@@ -134,6 +146,22 @@ export default function HomeScreen() {
     }
   };
 
+  const handleProfilePress = () => {
+    if (!userRole) return;
+    
+    switch (userRole) {
+      case 'customer':
+        router.push('/profile');
+        break;
+      case 'barber':
+        router.push('/barber/profile');
+        break;
+      case 'employee':
+        router.push('/employee/profile');
+        break;
+    }
+  };
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -148,18 +176,33 @@ export default function HomeScreen() {
         <View style={styles.header}>
           <TouchableOpacity 
             style={styles.profileButton}
-            onPress={() => router.push('/profile')}
+            onPress={handleProfilePress}
           >
             <Ionicons name="person-circle-outline" size={24} color={theme.colors.text} />
             <Text style={styles.profileText}>Profilim</Text>
           </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.logoutButton}
-            onPress={handleSignOut}
-          >
-            <Ionicons name="log-out-outline" size={24} color={theme.colors.error} />
-            <Text style={styles.logoutText}>Çıkış Yap</Text>
-          </TouchableOpacity>
+          <View style={styles.headerRight}>
+            <TouchableOpacity 
+              style={styles.notificationButton}
+              onPress={() => setShowNotifications(true)}
+            >
+              <Ionicons name="notifications-outline" size={24} color={theme.colors.text} />
+              {notificationCount > 0 && (
+                <View style={styles.notificationBadge}>
+                  <Text style={styles.notificationBadgeText}>
+                    {notificationCount > 99 ? '99+' : notificationCount}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.logoutButton}
+              onPress={handleSignOut}
+            >
+              <Ionicons name="log-out-outline" size={24} color={theme.colors.error} />
+              <Text style={styles.logoutText}>Çıkış Yap</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       )}
 
@@ -277,6 +320,15 @@ export default function HomeScreen() {
                 <Text style={styles.workingHours}>
                   {getWorkingHours(barber.workingHours)}
                 </Text>
+                <TouchableOpacity
+                  style={styles.appointmentButton}
+                  onPress={() => router.push({
+                    pathname: '/create-appointment',
+                    params: { barberId: barber.id }
+                  })}
+                >
+                  <Text style={styles.appointmentButtonText}>Randevu Oluştur</Text>
+                </TouchableOpacity>
               </View>
             </TouchableOpacity>
           ))}
@@ -321,6 +373,15 @@ export default function HomeScreen() {
                 <Text style={styles.workingHours}>
                   {getWorkingHours(barber.workingHours)}
                 </Text>
+                <TouchableOpacity
+                  style={styles.appointmentButton}
+                  onPress={() => router.push({
+                    pathname: '/create-appointment',
+                    params: { barberId: barber.id }
+                  })}
+                >
+                  <Text style={styles.appointmentButtonText}>Randevu Oluştur</Text>
+                </TouchableOpacity>
               </View>
             </TouchableOpacity>
           ))}
@@ -365,11 +426,29 @@ export default function HomeScreen() {
                 <Text style={styles.workingHours}>
                   {getWorkingHours(barber.workingHours)}
                 </Text>
+                <TouchableOpacity
+                  style={styles.appointmentButton}
+                  onPress={() => router.push({
+                    pathname: '/create-appointment',
+                    params: { barberId: barber.id }
+                  })}
+                >
+                  <Text style={styles.appointmentButtonText}>Randevu Oluştur</Text>
+                </TouchableOpacity>
               </View>
             </TouchableOpacity>
           ))}
         </ScrollView>
       </View>
+
+      {isAuthenticated && auth.currentUser && (
+        <NotificationList
+          userId={auth.currentUser.uid}
+          isVisible={showNotifications}
+          onClose={() => setShowNotifications(false)}
+          onNotificationCountChange={setNotificationCount}
+        />
+      )}
     </ScrollView>
   );
 }
@@ -593,5 +672,44 @@ const styles = StyleSheet.create({
   logoutText: {
     fontSize: 16,
     color: theme.colors.error,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.md,
+  },
+  notificationButton: {
+    padding: theme.spacing.sm,
+    position: 'relative',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    backgroundColor: theme.colors.error,
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  notificationBadgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  appointmentButton: {
+    backgroundColor: theme.colors.primary,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginTop: 12,
+    alignItems: 'center',
+  },
+  appointmentButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

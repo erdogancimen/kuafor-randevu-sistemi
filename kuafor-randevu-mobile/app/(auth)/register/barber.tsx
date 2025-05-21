@@ -8,6 +8,7 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { theme } from '@/utils/theme';
@@ -15,11 +16,21 @@ import { Ionicons } from '@expo/vector-icons';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { auth, db } from '@/config/firebase';
+import * as Location from 'expo-location';
 
 interface Service {
   name: string;
   price: number;
   duration: number;
+}
+
+interface Employee {
+  firstName: string;
+  lastName: string;
+  phone: string;
+  email: string;
+  password: string;
+  workingHours: string;
 }
 
 export default function BarberRegisterScreen() {
@@ -33,7 +44,19 @@ export default function BarberRegisterScreen() {
   const [barberType, setBarberType] = useState('male');
   const [workingHours, setWorkingHours] = useState('');
   const [services, setServices] = useState<Service[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [newEmployee, setNewEmployee] = useState<Employee>({
+    firstName: '',
+    lastName: '',
+    phone: '',
+    email: '',
+    password: '',
+    workingHours: ''
+  });
   const [newService, setNewService] = useState({ name: '', price: '', duration: '' });
+  const [latitude, setLatitude] = useState<number>(0);
+  const [longitude, setLongitude] = useState<number>(0);
+  const [imageUrl, setImageUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
@@ -64,6 +87,45 @@ export default function BarberRegisterScreen() {
     setServices(services.filter((_, i) => i !== index));
   };
 
+  const handleAddEmployee = () => {
+    if (!newEmployee.firstName || !newEmployee.lastName || !newEmployee.phone || 
+        !newEmployee.email || !newEmployee.password || !newEmployee.workingHours) {
+      Alert.alert('Hata', 'Lütfen tüm çalışan bilgilerini doldurun');
+      return;
+    }
+
+    setEmployees([...employees, newEmployee]);
+    setNewEmployee({
+      firstName: '',
+      lastName: '',
+      phone: '',
+      email: '',
+      password: '',
+      workingHours: ''
+    });
+  };
+
+  const handleRemoveEmployee = (index: number) => {
+    setEmployees(employees.filter((_, i) => i !== index));
+  };
+
+  const handleLocation = async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Hata', 'Konum izni reddedildi');
+        return;
+      }
+
+      const location = await Location.getCurrentPositionAsync({});
+      setLatitude(location.coords.latitude);
+      setLongitude(location.coords.longitude);
+      Alert.alert('Başarılı', 'Konum başarıyla alındı');
+    } catch (error) {
+      Alert.alert('Hata', 'Konum alınamadı');
+    }
+  };
+
   const handleRegister = async () => {
     if (password !== confirmPassword) {
       Alert.alert('Hata', 'Şifreler eşleşmiyor');
@@ -85,6 +147,20 @@ export default function BarberRegisterScreen() {
         displayName: `${firstName} ${lastName}` 
       });
 
+      // Çalışanlar için hesaplar oluştur
+      const employeeAccounts = await Promise.all(
+        employees.map(async (employee) => {
+          const employeeCredential = await createUserWithEmailAndPassword(auth, employee.email, employee.password);
+          await updateProfile(employeeCredential.user, {
+            displayName: `${employee.firstName} ${employee.lastName}`
+          });
+          return {
+            uid: employeeCredential.user.uid,
+            ...employee
+          };
+        })
+      );
+
       await setDoc(doc(db, 'users', user.uid), {
         firstName,
         lastName,
@@ -95,7 +171,11 @@ export default function BarberRegisterScreen() {
         role: 'barber',
         workingHours,
         services,
+        latitude,
+        longitude,
+        imageUrl,
         rating: 0,
+        employees: employeeAccounts,
         createdAt: new Date().toISOString()
       });
 
@@ -111,29 +191,34 @@ export default function BarberRegisterScreen() {
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Kuaför Kayıt</Text>
+        <View style={styles.headerTop}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color={theme.colors.surface} />
+          </TouchableOpacity>
+          <Text style={styles.title}>Kuaför Kayıt</Text>
+        </View>
         <Text style={styles.subtitle}>İşletmenizi kaydedin ve müşterilerinizi yönetin</Text>
       </View>
       
       <View style={styles.form}>
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Ad</Text>
-        <TextInput
-          style={styles.input}
+          <TextInput
+            style={styles.input}
             placeholder="Adınız"
-          value={firstName}
-          onChangeText={setFirstName}
+            value={firstName}
+            onChangeText={setFirstName}
             placeholderTextColor={theme.colors.textMuted}
-        />
+          />
         </View>
         
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Soyad</Text>
-        <TextInput
-          style={styles.input}
+          <TextInput
+            style={styles.input}
             placeholder="Soyadınız"
-          value={lastName}
-          onChangeText={setLastName}
+            value={lastName}
+            onChangeText={setLastName}
             placeholderTextColor={theme.colors.textMuted}
           />
         </View>
@@ -152,13 +237,13 @@ export default function BarberRegisterScreen() {
 
         <View style={styles.inputGroup}>
           <Text style={styles.label}>E-posta</Text>
-        <TextInput
-          style={styles.input}
+          <TextInput
+            style={styles.input}
             placeholder="E-posta adresiniz"
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
-          autoCapitalize="none"
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
             placeholderTextColor={theme.colors.textMuted}
           />
         </View>
@@ -189,63 +274,63 @@ export default function BarberRegisterScreen() {
 
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Adres</Text>
-        <TextInput
-          style={styles.input}
+          <TextInput
+            style={styles.input}
             placeholder="İşletme adresiniz"
             value={address}
             onChangeText={setAddress}
             multiline
             numberOfLines={3}
             placeholderTextColor={theme.colors.textMuted}
-        />
+          />
         </View>
 
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Kuaför Türü</Text>
           <View style={styles.pickerContainer}>
-        <TouchableOpacity 
+            <TouchableOpacity 
               style={[
                 styles.pickerOption,
                 barberType === 'male' && styles.pickerOptionSelected,
               ]}
               onPress={() => setBarberType('male')}
-        >
+            >
               <Text style={[
                 styles.pickerOptionText,
                 barberType === 'male' && styles.pickerOptionTextSelected,
               ]}>Erkek Kuaförü</Text>
-        </TouchableOpacity>
+            </TouchableOpacity>
             <TouchableOpacity
               style={[
                 styles.pickerOption,
                 barberType === 'female' && styles.pickerOptionSelected,
               ]}
               onPress={() => setBarberType('female')}
-        >
+            >
               <Text style={[
                 styles.pickerOptionText,
                 barberType === 'female' && styles.pickerOptionTextSelected,
               ]}>Kadın Kuaförü</Text>
             </TouchableOpacity>
-                <TouchableOpacity
+            <TouchableOpacity
               style={[
                 styles.pickerOption,
                 barberType === 'mixed' && styles.pickerOptionSelected,
               ]}
               onPress={() => setBarberType('mixed')}
-                >
+            >
               <Text style={[
                 styles.pickerOptionText,
                 barberType === 'mixed' && styles.pickerOptionTextSelected,
               ]}>Karma Kuaför</Text>
-                </TouchableOpacity>
+            </TouchableOpacity>
           </View>
         </View>
         
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Çalışma Saatleri</Text>
-        <TextInput
-          style={styles.input}
+          <TextInput
+            style={styles.input}
             placeholder="Örn: 09:00-18:00"
             value={workingHours}
             onChangeText={setWorkingHours}
@@ -304,6 +389,102 @@ export default function BarberRegisterScreen() {
             </View>
           ))}
         </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Çalışanlar</Text>
+          <View style={styles.employeeInputs}>
+            <TextInput
+              style={[styles.input, styles.employeeInput]}
+              placeholder="Ad"
+              value={newEmployee.firstName}
+              onChangeText={(text) => setNewEmployee({ ...newEmployee, firstName: text })}
+              placeholderTextColor={theme.colors.textMuted}
+            />
+            <TextInput
+              style={[styles.input, styles.employeeInput]}
+              placeholder="Soyad"
+              value={newEmployee.lastName}
+              onChangeText={(text) => setNewEmployee({ ...newEmployee, lastName: text })}
+              placeholderTextColor={theme.colors.textMuted}
+            />
+            <TextInput
+              style={[styles.input, styles.employeeInput]}
+              placeholder="Telefon"
+              value={newEmployee.phone}
+              onChangeText={(text) => setNewEmployee({ ...newEmployee, phone: text })}
+              keyboardType="phone-pad"
+              placeholderTextColor={theme.colors.textMuted}
+            />
+            <TextInput
+              style={[styles.input, styles.employeeInput]}
+              placeholder="E-posta"
+              value={newEmployee.email}
+              onChangeText={(text) => setNewEmployee({ ...newEmployee, email: text })}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              placeholderTextColor={theme.colors.textMuted}
+            />
+            <TextInput
+              style={[styles.input, styles.employeeInput]}
+              placeholder="Şifre"
+              value={newEmployee.password}
+              onChangeText={(text) => setNewEmployee({ ...newEmployee, password: text })}
+              secureTextEntry
+              placeholderTextColor={theme.colors.textMuted}
+            />
+            <TextInput
+              style={[styles.input, styles.employeeInput]}
+              placeholder="Çalışma Saatleri"
+              value={newEmployee.workingHours}
+              onChangeText={(text) => setNewEmployee({ ...newEmployee, workingHours: text })}
+              placeholderTextColor={theme.colors.textMuted}
+            />
+            <TouchableOpacity
+              style={styles.addEmployeeButton}
+              onPress={handleAddEmployee}
+            >
+              <Text style={styles.addEmployeeButtonText}>Çalışan Ekle</Text>
+            </TouchableOpacity>
+          </View>
+
+          {employees.map((employee, index) => (
+            <View key={index} style={styles.employeeItem}>
+              <View>
+                <Text style={styles.employeeName}>
+                  {employee.firstName} {employee.lastName}
+                </Text>
+                <Text style={styles.employeeDetails}>
+                  {employee.phone} - {employee.email}
+                </Text>
+                <Text style={styles.employeeDetails}>
+                  Çalışma Saatleri: {employee.workingHours}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => handleRemoveEmployee(index)}
+                style={styles.removeEmployeeButton}
+              >
+                <Ionicons name="close" size={24} color={theme.colors.error} />
+              </TouchableOpacity>
+            </View>
+          ))}
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Konum</Text>
+          <TouchableOpacity
+            style={styles.locationButton}
+            onPress={handleLocation}
+          >
+            <Ionicons name="location" size={24} color={theme.colors.primary} />
+            <Text style={styles.locationButtonText}>Konumumu Al</Text>
+          </TouchableOpacity>
+          {latitude !== 0 && longitude !== 0 && (
+            <Text style={styles.locationText}>
+              Konum: {latitude.toFixed(6)}, {longitude.toFixed(6)}
+            </Text>
+          )}
+        </View>
         
         <TouchableOpacity 
           style={styles.registerButton}
@@ -323,8 +504,8 @@ export default function BarberRegisterScreen() {
           </TouchableOpacity>
           <TouchableOpacity onPress={() => router.push('/register/customer')}>
             <Text style={styles.link}>Müşteri olarak kayıt olmak için tıklayın</Text>
-        </TouchableOpacity>
-      </View>
+          </TouchableOpacity>
+        </View>
       </View>
     </ScrollView>
   );
@@ -337,16 +518,24 @@ const styles = StyleSheet.create({
   },
   header: {
     padding: theme.spacing.xl,
-    backgroundColor: theme.colors.primary,
+    backgroundColor: theme.colors.background,
+  },
+  headerTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: theme.spacing.xs,
+  },
+  backButton: {
+    marginRight: theme.spacing.md,
   },
   title: {
     ...theme.typography.h1,
-    color: theme.colors.surface,
+    color: theme.colors.text,
     marginBottom: theme.spacing.xs,
   },
   subtitle: {
     ...theme.typography.body,
-    color: theme.colors.surface,
+    color: theme.colors.textSecondary,
     opacity: 0.8,
   },
   form: {
@@ -428,6 +617,64 @@ const styles = StyleSheet.create({
   },
   removeServiceButton: {
     padding: theme.spacing.xs,
+  },
+  employeeInputs: {
+    gap: theme.spacing.sm,
+    marginBottom: theme.spacing.md,
+  },
+  employeeInput: {
+    width: '100%',
+  },
+  addEmployeeButton: {
+    backgroundColor: theme.colors.primary,
+    padding: theme.spacing.md,
+    borderRadius: theme.borderRadius.lg,
+    alignItems: 'center',
+  },
+  addEmployeeButtonText: {
+    ...theme.typography.button,
+    color: theme.colors.surface,
+  },
+  employeeItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: theme.colors.surface,
+    padding: theme.spacing.md,
+    borderRadius: theme.borderRadius.lg,
+    marginBottom: theme.spacing.sm,
+  },
+  employeeName: {
+    ...theme.typography.body,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs,
+  },
+  employeeDetails: {
+    ...theme.typography.bodySmall,
+    color: theme.colors.textSecondary,
+  },
+  removeEmployeeButton: {
+    padding: theme.spacing.xs,
+  },
+  locationButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.surface,
+    padding: theme.spacing.md,
+    borderRadius: theme.borderRadius.lg,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    gap: theme.spacing.sm,
+  },
+  locationButtonText: {
+    ...theme.typography.body,
+    color: theme.colors.primary,
+  },
+  locationText: {
+    ...theme.typography.bodySmall,
+    color: theme.colors.textSecondary,
+    marginTop: theme.spacing.sm,
   },
   registerButton: {
     backgroundColor: theme.colors.primary,

@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { getAuth, updateProfile, signOut, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
 import { getFirestore, doc, getDoc, updateDoc, collection, addDoc, deleteDoc, query, where, getDocs } from 'firebase/firestore';
 import { EmailAuthProvider } from 'firebase/auth';
+import NotificationList from '@/components/NotificationList';
 
 interface EmployeeProfile {
   firstName: string;
@@ -99,6 +100,8 @@ export default function EmployeeProfileScreen() {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [todayAppointments, setTodayAppointments] = useState<Appointment[]>([]);
   const [showMenu, setShowMenu] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [notificationCount, setNotificationCount] = useState(0);
   const router = useRouter();
   const auth = getAuth();
 
@@ -398,7 +401,7 @@ export default function EmployeeProfileScreen() {
   };
 
   const handleNotificationsPress = () => {
-    router.push('/notifications');
+    setShowNotifications(true);
   };
 
   if (loading) {
@@ -425,6 +428,13 @@ export default function EmployeeProfileScreen() {
         <View style={styles.headerRight}>
           <TouchableOpacity onPress={handleNotificationsPress} style={styles.notificationButton}>
             <Ionicons name="notifications-outline" size={24} color={theme.colors.text} />
+            {notificationCount > 0 && (
+              <View style={styles.notificationBadge}>
+                <Text style={styles.notificationBadgeText}>
+                  {notificationCount > 99 ? '99+' : notificationCount}
+                </Text>
+              </View>
+            )}
           </TouchableOpacity>
           <TouchableOpacity onPress={handleMenuPress} style={styles.menuButton}>
             <Ionicons name="menu" size={24} color={theme.colors.text} />
@@ -880,6 +890,15 @@ export default function EmployeeProfileScreen() {
           )}
         </View>
       </ScrollView>
+
+      {auth.currentUser && (
+        <NotificationList
+          userId={auth.currentUser.uid}
+          isVisible={showNotifications}
+          onClose={() => setShowNotifications(false)}
+          onNotificationCountChange={setNotificationCount}
+        />
+      )}
     </View>
   );
 }
@@ -912,6 +931,24 @@ const styles = StyleSheet.create({
   },
   notificationButton: {
     padding: theme.spacing.sm,
+    position: 'relative',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    backgroundColor: theme.colors.error,
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  notificationBadgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
   content: {
     flex: 1,

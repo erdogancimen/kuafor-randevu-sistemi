@@ -235,28 +235,22 @@ export default function CustomerProfile() {
   }
 
   return (
-    <ScrollView style={styles.container}>
-      {/* Header */}
+    <View style={styles.container}>
       <View style={styles.header}>
-        <View style={styles.headerContent}>
-          <TouchableOpacity
-            style={styles.homeButton}
-            onPress={() => router.push('/')}
-          >
-            <Ionicons name="home-outline" size={24} color={theme.colors.primary} />
-            <Text style={styles.homeButtonText}>Anasayfa</Text>
+        <Text style={styles.headerTitle}>Profilim</Text>
+        <View style={styles.headerRight}>
+          <TouchableOpacity onPress={() => router.push('/')} style={styles.headerButton}>
+            <Ionicons name="home-outline" size={20} color={theme.colors.primary} />
+            <Text style={[styles.headerButtonText, { color: theme.colors.primary }]}>Anasayfa</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.logoutButton}
-            onPress={handleSignOut}
-          >
-            <Ionicons name="log-out-outline" size={24} color={theme.colors.destructive} />
-            <Text style={styles.logoutButtonText}>Çıkış Yap</Text>
+          <TouchableOpacity onPress={handleSignOut} style={[styles.headerButton, styles.logoutButton]}>
+            <Ionicons name="log-out-outline" size={20} color={theme.colors.destructive} />
+            <Text style={[styles.headerButtonText, styles.logoutText]}>Çıkış Yap</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      <View style={styles.content}>
+      <ScrollView style={styles.content}>
         <View style={styles.profileSection}>
           <View style={styles.profileCard}>
             <View style={styles.profileImageContainer}>
@@ -408,8 +402,8 @@ export default function CustomerProfile() {
             </View>
           </View>
         </View>
-      </View>
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -419,41 +413,41 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.background,
   },
   header: {
-    backgroundColor: theme.colors.surface,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: theme.spacing.md,
+    backgroundColor: theme.colors.background,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
   },
-  headerContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: theme.spacing.lg,
+  headerTitle: {
+    ...theme.typography.h3,
+    color: theme.colors.text,
   },
-  homeButton: {
+  headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: theme.colors.primary + '20',
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
+    gap: theme.spacing.sm,
+  },
+  headerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.background,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
     borderRadius: theme.borderRadius.md,
+    gap: theme.spacing.xs,
   },
-  homeButtonText: {
-    ...theme.typography.body,
-    color: theme.colors.primary,
-    marginLeft: theme.spacing.sm,
+  headerButtonText: {
+    ...theme.typography.bodySmall,
+    fontWeight: '600',
   },
   logoutButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: theme.colors.destructive + '20',
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    borderRadius: theme.borderRadius.md,
   },
-  logoutButtonText: {
-    ...theme.typography.body,
+  logoutText: {
     color: theme.colors.destructive,
-    marginLeft: theme.spacing.sm,
   },
   loadingContainer: {
     flex: 1,
@@ -470,7 +464,7 @@ const styles = StyleSheet.create({
     color: theme.colors.error,
   },
   content: {
-    padding: theme.spacing.lg,
+    flex: 1,
   },
   profileSection: {
     marginBottom: theme.spacing.xl,

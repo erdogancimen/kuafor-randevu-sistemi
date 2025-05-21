@@ -420,13 +420,16 @@ export default function EmployeeProfileScreen() {
   return (
     <View style={styles.container}>
       {/* Top Navigation Bar */}
-      <View style={styles.topBar}>
-        <TouchableOpacity onPress={handleMenuPress} style={styles.menuButton}>
-          <Ionicons name="menu" size={24} color={theme.colors.text} />
-        </TouchableOpacity>
-        <TouchableOpacity onPress={handleNotificationsPress} style={styles.notificationButton}>
-          <Ionicons name="notifications-outline" size={24} color={theme.colors.text} />
-        </TouchableOpacity>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Çalışan Profili</Text>
+        <View style={styles.headerRight}>
+          <TouchableOpacity onPress={handleNotificationsPress} style={styles.notificationButton}>
+            <Ionicons name="notifications-outline" size={24} color={theme.colors.text} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleMenuPress} style={styles.menuButton}>
+            <Ionicons name="menu" size={24} color={theme.colors.text} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Hamburger Menu Modal */}
@@ -891,7 +894,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: theme.spacing.lg,
-    backgroundColor: theme.colors.surface,
+    backgroundColor: theme.colors.background,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
   },
@@ -899,7 +902,15 @@ const styles = StyleSheet.create({
     ...theme.typography.h2,
     color: theme.colors.text,
   },
-  signOutButton: {
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.md,
+  },
+  menuButton: {
+    padding: theme.spacing.sm,
+  },
+  notificationButton: {
     padding: theme.spacing.sm,
   },
   content: {
@@ -1211,21 +1222,6 @@ const styles = StyleSheet.create({
     color: theme.colors.textSecondary,
     textAlign: 'center',
     fontStyle: 'italic',
-  },
-  topBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: theme.spacing.lg,
-    backgroundColor: theme.colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-  },
-  menuButton: {
-    padding: theme.spacing.sm,
-  },
-  notificationButton: {
-    padding: theme.spacing.sm,
   },
   modalOverlay: {
     flex: 1,

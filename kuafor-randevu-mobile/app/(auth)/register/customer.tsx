@@ -32,7 +32,7 @@ export default function CustomerRegisterScreen() {
       return;
     }
 
-    setLoading(true);
+      setLoading(true);
 
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
@@ -67,7 +67,7 @@ export default function CustomerRegisterScreen() {
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color={theme.colors.surface} />
           </TouchableOpacity>
-          <Text style={styles.title}>Müşteri Kayıt</Text>
+        <Text style={styles.title}>Müşteri Kayıt</Text>
         </View>
         <Text style={styles.subtitle}>Hesabınızı oluşturun ve randevularınızı yönetin</Text>
       </View>
@@ -75,30 +75,30 @@ export default function CustomerRegisterScreen() {
       <View style={styles.form}>
         <View style={styles.inputRow}>
           <View style={[styles.inputGroup, styles.inputGroupHalf]}>
-            <Text style={styles.label}>Ad</Text>
+          <Text style={styles.label}>Ad</Text>
             <View style={styles.inputContainer}>
               <Ionicons name="person-outline" size={20} color={theme.colors.textMuted} style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="Adınız"
-                value={firstName}
-                onChangeText={setFirstName}
-                placeholderTextColor={theme.colors.textMuted}
-              />
+        <TextInput
+          style={styles.input}
+            placeholder="Adınız"
+          value={firstName}
+          onChangeText={setFirstName}
+            placeholderTextColor={theme.colors.textMuted}
+        />
             </View>
-          </View>
-          
+        </View>
+        
           <View style={[styles.inputGroup, styles.inputGroupHalf]}>
-            <Text style={styles.label}>Soyad</Text>
+          <Text style={styles.label}>Soyad</Text>
             <View style={styles.inputContainer}>
               <Ionicons name="person-outline" size={20} color={theme.colors.textMuted} style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="Soyadınız"
-                value={lastName}
-                onChangeText={setLastName}
-                placeholderTextColor={theme.colors.textMuted}
-              />
+        <TextInput
+          style={styles.input}
+            placeholder="Soyadınız"
+          value={lastName}
+          onChangeText={setLastName}
+            placeholderTextColor={theme.colors.textMuted}
+          />
             </View>
           </View>
         </View>
@@ -107,14 +107,14 @@ export default function CustomerRegisterScreen() {
           <Text style={styles.label}>Telefon</Text>
           <View style={styles.inputContainer}>
             <Ionicons name="call-outline" size={20} color={theme.colors.textMuted} style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="Telefon numaranız"
-              value={phone}
-              onChangeText={setPhone}
-              keyboardType="phone-pad"
-              placeholderTextColor={theme.colors.textMuted}
-            />
+          <TextInput
+            style={styles.input}
+            placeholder="Telefon numaranız"
+            value={phone}
+            onChangeText={setPhone}
+            keyboardType="phone-pad"
+            placeholderTextColor={theme.colors.textMuted}
+          />
           </View>
         </View>
 
@@ -122,15 +122,15 @@ export default function CustomerRegisterScreen() {
           <Text style={styles.label}>E-posta</Text>
           <View style={styles.inputContainer}>
             <Ionicons name="mail-outline" size={20} color={theme.colors.textMuted} style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="E-posta adresiniz"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              placeholderTextColor={theme.colors.textMuted}
-            />
+        <TextInput
+          style={styles.input}
+            placeholder="E-posta adresiniz"
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+            placeholderTextColor={theme.colors.textMuted}
+        />
           </View>
         </View>
         
@@ -138,14 +138,14 @@ export default function CustomerRegisterScreen() {
           <Text style={styles.label}>Şifre</Text>
           <View style={styles.inputContainer}>
             <Ionicons name="lock-closed-outline" size={20} color={theme.colors.textMuted} style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="Şifreniz"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              placeholderTextColor={theme.colors.textMuted}
-            />
+        <TextInput
+          style={styles.input}
+            placeholder="Şifreniz"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+            placeholderTextColor={theme.colors.textMuted}
+          />
           </View>
         </View>
 
@@ -153,14 +153,14 @@ export default function CustomerRegisterScreen() {
           <Text style={styles.label}>Şifre Tekrar</Text>
           <View style={styles.inputContainer}>
             <Ionicons name="lock-closed-outline" size={20} color={theme.colors.textMuted} style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="Şifrenizi tekrar girin"
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-              secureTextEntry
-              placeholderTextColor={theme.colors.textMuted}
-            />
+          <TextInput
+            style={styles.input}
+            placeholder="Şifrenizi tekrar girin"
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
+            secureTextEntry
+            placeholderTextColor={theme.colors.textMuted}
+          />
           </View>
         </View>
         
@@ -171,7 +171,7 @@ export default function CustomerRegisterScreen() {
         >
           {loading ? (
             <View style={styles.loadingContainer}>
-              <ActivityIndicator color={theme.colors.surface} />
+            <ActivityIndicator color={theme.colors.surface} />
               <Text style={styles.loadingText}>Kayıt yapılıyor...</Text>
             </View>
           ) : (
@@ -180,12 +180,12 @@ export default function CustomerRegisterScreen() {
         </TouchableOpacity>
 
         <View style={styles.links}>
-          <TouchableOpacity onPress={() => router.push('/login')}>
+        <TouchableOpacity onPress={() => router.push('/login')}>
             <Text style={styles.link}>Zaten hesabınız var mı? Giriş yapın</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => router.push('/register/barber')}>
             <Text style={styles.link}>Kuaför olarak kayıt olmak için tıklayın</Text>
-          </TouchableOpacity>
+        </TouchableOpacity>
         </View>
       </View>
     </ScrollView>

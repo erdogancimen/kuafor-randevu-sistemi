@@ -290,6 +290,8 @@ export default function Home() {
       router.push('/barber/profile');
     } else if (userRole === 'customer') {
       router.push('/profile');
+    } else if (userRole === 'employee') {
+      router.push('/employee/profile');
     }
   };
 

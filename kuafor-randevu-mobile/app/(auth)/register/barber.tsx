@@ -195,7 +195,7 @@ export default function BarberRegisterScreen() {
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color={theme.colors.surface} />
           </TouchableOpacity>
-          <Text style={styles.title}>Kuaför Kayıt</Text>
+        <Text style={styles.title}>Kuaför Kayıt</Text>
         </View>
         <Text style={styles.subtitle}>İşletmenizi kaydedin ve müşterilerinizi yönetin</Text>
       </View>
@@ -203,22 +203,22 @@ export default function BarberRegisterScreen() {
       <View style={styles.form}>
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Ad</Text>
-          <TextInput
-            style={styles.input}
+        <TextInput
+          style={styles.input}
             placeholder="Adınız"
-            value={firstName}
-            onChangeText={setFirstName}
+          value={firstName}
+          onChangeText={setFirstName}
             placeholderTextColor={theme.colors.textMuted}
-          />
+        />
         </View>
         
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Soyad</Text>
-          <TextInput
-            style={styles.input}
+        <TextInput
+          style={styles.input}
             placeholder="Soyadınız"
-            value={lastName}
-            onChangeText={setLastName}
+          value={lastName}
+          onChangeText={setLastName}
             placeholderTextColor={theme.colors.textMuted}
           />
         </View>
@@ -237,13 +237,13 @@ export default function BarberRegisterScreen() {
 
         <View style={styles.inputGroup}>
           <Text style={styles.label}>E-posta</Text>
-          <TextInput
-            style={styles.input}
+        <TextInput
+          style={styles.input}
             placeholder="E-posta adresiniz"
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
             placeholderTextColor={theme.colors.textMuted}
           />
         </View>
@@ -274,63 +274,63 @@ export default function BarberRegisterScreen() {
 
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Adres</Text>
-          <TextInput
-            style={styles.input}
+        <TextInput
+          style={styles.input}
             placeholder="İşletme adresiniz"
             value={address}
             onChangeText={setAddress}
             multiline
             numberOfLines={3}
             placeholderTextColor={theme.colors.textMuted}
-          />
+        />
         </View>
 
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Kuaför Türü</Text>
           <View style={styles.pickerContainer}>
-            <TouchableOpacity 
+        <TouchableOpacity 
               style={[
                 styles.pickerOption,
                 barberType === 'male' && styles.pickerOptionSelected,
               ]}
               onPress={() => setBarberType('male')}
-            >
+        >
               <Text style={[
                 styles.pickerOptionText,
                 barberType === 'male' && styles.pickerOptionTextSelected,
               ]}>Erkek Kuaförü</Text>
-            </TouchableOpacity>
+        </TouchableOpacity>
             <TouchableOpacity
               style={[
                 styles.pickerOption,
                 barberType === 'female' && styles.pickerOptionSelected,
               ]}
               onPress={() => setBarberType('female')}
-            >
+        >
               <Text style={[
                 styles.pickerOptionText,
                 barberType === 'female' && styles.pickerOptionTextSelected,
               ]}>Kadın Kuaförü</Text>
             </TouchableOpacity>
-            <TouchableOpacity
+                <TouchableOpacity
               style={[
                 styles.pickerOption,
                 barberType === 'mixed' && styles.pickerOptionSelected,
               ]}
               onPress={() => setBarberType('mixed')}
-            >
+                >
               <Text style={[
                 styles.pickerOptionText,
                 barberType === 'mixed' && styles.pickerOptionTextSelected,
               ]}>Karma Kuaför</Text>
-            </TouchableOpacity>
+                </TouchableOpacity>
           </View>
         </View>
         
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Çalışma Saatleri</Text>
-          <TextInput
-            style={styles.input}
+        <TextInput
+          style={styles.input}
             placeholder="Örn: 09:00-18:00"
             value={workingHours}
             onChangeText={setWorkingHours}
@@ -504,8 +504,8 @@ export default function BarberRegisterScreen() {
           </TouchableOpacity>
           <TouchableOpacity onPress={() => router.push('/register/customer')}>
             <Text style={styles.link}>Müşteri olarak kayıt olmak için tıklayın</Text>
-          </TouchableOpacity>
-        </View>
+        </TouchableOpacity>
+      </View>
       </View>
     </ScrollView>
   );

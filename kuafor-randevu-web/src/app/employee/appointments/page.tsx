@@ -234,7 +234,7 @@ export default function EmployeeAppointmentsPage() {
                   <div className="flex items-start space-x-4">
                     <div className="relative h-12 w-12 overflow-hidden rounded-full bg-gray-700">
                       <Image
-                        src="/images/default-user.jpg"
+                        src="/images/default-avatar.jpg"
                         alt={appointment.customerName || 'Müşteri'}
                         fill
                         className="object-cover"

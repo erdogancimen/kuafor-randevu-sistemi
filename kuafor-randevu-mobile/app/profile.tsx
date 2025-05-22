@@ -293,14 +293,14 @@ export default function CustomerProfile() {
                 </View>
               )}
             </TouchableOpacity>
-            <TouchableOpacity
+          <TouchableOpacity
               style={styles.menuItem}
               onPress={() => handleMenuItemPress('/')}
-            >
+          >
               <Ionicons name="home-outline" size={24} color={theme.colors.text} />
               <Text style={styles.menuItemText}>Anasayfa</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
+          </TouchableOpacity>
+          <TouchableOpacity
               style={styles.menuItem}
               onPress={() => handleMenuItemPress('/appointments')}
             >
@@ -310,12 +310,12 @@ export default function CustomerProfile() {
             <View style={styles.menuDivider} />
             <TouchableOpacity
               style={[styles.menuItem, styles.logoutButton]}
-              onPress={handleSignOut}
-            >
-              <Ionicons name="log-out-outline" size={24} color={theme.colors.destructive} />
+            onPress={handleSignOut}
+          >
+            <Ionicons name="log-out-outline" size={24} color={theme.colors.destructive} />
               <Text style={[styles.menuItemText, styles.logoutText]}>Çıkış Yap</Text>
-            </TouchableOpacity>
-          </View>
+          </TouchableOpacity>
+        </View>
         </TouchableOpacity>
       </Modal>
 
@@ -481,7 +481,7 @@ export default function CustomerProfile() {
           onNotificationCountChange={setNotificationCount}
         />
       )}
-    </View>
+      </View>
   );
 }
 

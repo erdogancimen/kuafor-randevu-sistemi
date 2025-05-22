@@ -142,9 +142,9 @@ export default function HomeScreen() {
           : 0;
 
         return {
-          id: doc.id,
+        id: doc.id,
           ...barberData,
-          photoURL: DEFAULT_IMAGES.barber,
+        photoURL: DEFAULT_IMAGES.barber,
           stats: {
             averageRating,
             totalReviews
@@ -398,12 +398,12 @@ export default function HomeScreen() {
             Size en yakın kuaförleri bulun, değerlendirmeleri inceleyin ve hemen randevu alın.
           </Text>
           {!isAuthenticated && (
-            <TouchableOpacity 
-              style={styles.loginButton}
-              onPress={() => router.push('/login')}
-            >
-              <Text style={styles.loginButtonText}>Giriş Yap</Text>
-            </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.loginButton}
+            onPress={() => router.push('/login')}
+          >
+            <Text style={styles.loginButtonText}>Giriş Yap</Text>
+          </TouchableOpacity>
           )}
         </View>
       </View>
@@ -421,15 +421,15 @@ export default function HomeScreen() {
             placeholderTextColor={theme.colors.textMuted}
           />
           {searchQuery ? (
-            <TouchableOpacity 
+          <TouchableOpacity 
               style={styles.clearButton}
               onPress={() => {
                 setSearchQuery('');
                 setFilteredBarbers({ popular: [], nearby: [] });
               }}
-            >
+          >
               <Ionicons name="close-circle" size={20} color={theme.colors.textSecondary} />
-            </TouchableOpacity>
+          </TouchableOpacity>
           ) : null}
         </View>
 
@@ -661,7 +661,7 @@ export default function HomeScreen() {
           style={[styles.barbersList, showAllRecentBarbers && styles.barbersListVertical]}
         >
           {recentBarbers.map((barber) => (
-            <TouchableOpacity
+            <TouchableOpacity 
               key={barber.id}
               style={[styles.barberCard, showAllRecentBarbers && styles.barberCardVertical]}
               onPress={() => router.push({
@@ -678,7 +678,7 @@ export default function HomeScreen() {
                   {barber.firstName} {barber.lastName}
                 </Text>
                 <View style={styles.barberRating}>
-                  <Ionicons name="star" size={16} color={theme.colors.warning} />
+                <Ionicons name="star" size={16} color={theme.colors.warning} />
                   <Text style={styles.ratingText}>
                     {barber.stats?.averageRating ? barber.stats.averageRating.toFixed(1) : '0.0'}
                   </Text>

@@ -18,6 +18,7 @@ import { getAuth, updateProfile, signOut, reauthenticateWithCredential, updatePa
 import { getFirestore, doc, getDoc, updateDoc, collection, addDoc, deleteDoc, query, where, getDocs } from 'firebase/firestore';
 import { EmailAuthProvider } from 'firebase/auth';
 import NotificationList from '@/components/NotificationList';
+import { Calendar } from 'react-native-calendars';
 
 interface EmployeeProfile {
   firstName: string;
@@ -102,6 +103,8 @@ export default function EmployeeProfileScreen() {
   const [showMenu, setShowMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notificationCount, setNotificationCount] = useState(0);
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [markedDates, setMarkedDates] = useState({});
   const router = useRouter();
   const auth = getAuth();
 
@@ -109,8 +112,24 @@ export default function EmployeeProfileScreen() {
     fetchProfile();
     fetchServices();
     fetchWorkingHours();
-    fetchTodayAppointments();
   }, []);
+
+  useEffect(() => {
+    if (selectedDate) {
+      fetchTodayAppointments();
+    }
+  }, [selectedDate]);
+
+  useEffect(() => {
+    if (selectedDate) {
+      setMarkedDates({
+        [selectedDate]: {
+          selected: true,
+          selectedColor: theme.colors.primary,
+        },
+      });
+    }
+  }, [selectedDate]);
 
   const fetchProfile = async () => {
     try {
@@ -404,6 +423,57 @@ export default function EmployeeProfileScreen() {
     setShowNotifications(true);
   };
 
+  const generateTimeSlots = (startTime: string, endTime: string, interval: number = 30) => {
+    const slots = [];
+    const [startHour, startMinute] = startTime.split(':').map(Number);
+    const [endHour, endMinute] = endTime.split(':').map(Number);
+    
+    let currentTime = new Date();
+    currentTime.setHours(startHour, startMinute, 0);
+    
+    const endDateTime = new Date();
+    endDateTime.setHours(endHour, endMinute, 0);
+    
+    while (currentTime < endDateTime) {
+      slots.push(
+        currentTime.toLocaleTimeString('tr-TR', {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        })
+      );
+      currentTime.setMinutes(currentTime.getMinutes() + interval);
+    }
+    
+    return slots;
+  };
+
+  const isTimeSlotOccupied = (time: string, appointments: Appointment[]) => {
+    const [hour, minute] = time.split(':').map(Number);
+    const slotStartTime = hour * 60 + minute;
+
+    return appointments.some(appointment => {
+      const [appHour, appMinute] = appointment.time.split(':').map(Number);
+      const appStartTime = appHour * 60 + appMinute;
+      const appEndTime = appStartTime + appointment.duration;
+
+      return slotStartTime >= appStartTime && slotStartTime < appEndTime;
+    });
+  };
+
+  const getAppointmentForTimeSlot = (time: string, appointments: Appointment[]) => {
+    const [hour, minute] = time.split(':').map(Number);
+    const slotStartTime = hour * 60 + minute;
+
+    return appointments.find(appointment => {
+      const [appHour, appMinute] = appointment.time.split(':').map(Number);
+      const appStartTime = appHour * 60 + appMinute;
+      const appEndTime = appStartTime + appointment.duration;
+
+      return slotStartTime >= appStartTime && slotStartTime < appEndTime;
+    });
+  };
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -653,25 +723,126 @@ export default function EmployeeProfileScreen() {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.appointmentsList}>
-            {todayAppointments.length > 0 ? (
-              todayAppointments.map((appointment) => (
-                <View key={appointment.id} style={styles.appointmentCard}>
-                  <View style={styles.appointmentHeader}>
-                    <View style={styles.appointmentInfo}>
-                      <Text style={styles.appointmentService}>{appointment.service}</Text>
-                      <Text style={styles.appointmentCustomer}>{appointment.customerName}</Text>
-                    </View>
-                    <View style={styles.appointmentTime}>
-                      <Text style={styles.appointmentTimeText}>{appointment.time}</Text>
-                      <Text style={styles.appointmentDuration}>{appointment.duration} dk</Text>
-                    </View>
-                  </View>
+          {/* Tarih Seçici */}
+          <TouchableOpacity
+            style={styles.dateInput}
+            onPress={() => setShowCalendar(true)}
+          >
+            <Text style={styles.dateInputText}>
+              {selectedDate ? new Date(selectedDate).toLocaleDateString('tr-TR', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+              }) : 'Tarih seçin'}
+            </Text>
+            <Ionicons name="calendar-outline" size={24} color={theme.colors.textSecondary} />
+          </TouchableOpacity>
+
+          {/* Takvim Modal */}
+          <Modal
+            visible={showCalendar}
+            transparent
+            animationType="slide"
+            onRequestClose={() => setShowCalendar(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.calendarModal}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Tarih Seçin</Text>
+                  <TouchableOpacity onPress={() => setShowCalendar(false)}>
+                    <Ionicons name="close" size={24} color={theme.colors.text} />
+                  </TouchableOpacity>
                 </View>
-              ))
-            ) : (
-              <Text style={styles.emptyText}>Seçili tarih için randevu bulunmuyor</Text>
-            )}
+                <Calendar
+                  onDayPress={(day: { dateString: string }) => {
+                    setSelectedDate(day.dateString);
+                    setShowCalendar(false);
+                  }}
+                  markedDates={markedDates}
+                  minDate={new Date().toISOString().split('T')[0]}
+                  theme={{
+                    todayTextColor: theme.colors.primary,
+                    selectedDayBackgroundColor: theme.colors.primary,
+                    selectedDayTextColor: '#ffffff',
+                    arrowColor: theme.colors.primary,
+                  }}
+                />
+              </View>
+            </View>
+          </Modal>
+
+          {/* Saatlik Randevu Listesi */}
+          <View style={styles.timeSlotsContainer}>
+            {(() => {
+              const today = new Date(selectedDate).toLocaleDateString('tr-TR', { weekday: 'long' });
+              const currentWorkingHours = workingHours.find((h: WorkingHours) => h.day === today) || { isOpen: true, openTime: '09:00', closeTime: '18:00' };
+              
+              if (!currentWorkingHours.isOpen) {
+                return (
+                  <View style={styles.closedMessage}>
+                    <Text style={styles.closedMessageText}>Bugün kapalı</Text>
+                  </View>
+                );
+              }
+
+              const timeSlots = generateTimeSlots(currentWorkingHours.openTime, currentWorkingHours.closeTime, 30);
+              
+              return (
+                <View style={styles.timeSlotsGrid}>
+                  {timeSlots.map((time) => {
+                    const isOccupied = isTimeSlotOccupied(time, todayAppointments);
+                    const appointment = getAppointmentForTimeSlot(time, todayAppointments);
+                    const isExactTime = appointment?.time === time;
+                    
+                    return (
+                      <TouchableOpacity
+                        key={time}
+                        style={styles.timeSlotCard}
+                        onPress={() => {
+                          if (isOccupied) {
+                            router.push('/employee/appointments');
+                          }
+                        }}
+                        disabled={!isOccupied}
+                      >
+                        <View style={styles.timeSlotHeader}>
+                          <Text style={styles.timeSlotTime}>{time}</Text>
+                          {appointment && (
+                            <View style={[
+                              styles.appointmentStatus,
+                              appointment.status === 'confirmed' ? styles.statusConfirmed : styles.statusPending
+                            ]}>
+                              <Text style={styles.appointmentStatusText}>
+                                {appointment.status === 'confirmed' ? 'Onaylandı' : 'Beklemede'}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                        
+                        {isOccupied ? (
+                          <View style={styles.appointmentContent}>
+                            <View style={styles.appointmentInfo}>
+                              <Text style={styles.customerName}>{appointment?.customerName || 'Müşteri'}</Text>
+                              <Text style={styles.serviceName}>
+                                {isExactTime ? appointment?.service : 'Devam eden hizmet'}
+                              </Text>
+                            </View>
+                            <View style={styles.appointmentDuration}>
+                              <Ionicons name="time-outline" size={16} color={theme.colors.textSecondary} />
+                              <Text style={styles.durationText}>{appointment?.duration || 0} dk</Text>
+                            </View>
+                          </View>
+                        ) : (
+                          <View style={styles.emptySlot}>
+                            <Text style={styles.emptySlotText}>Boş</Text>
+                          </View>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              );
+            })()}
           </View>
         </View>
 
@@ -1126,7 +1297,13 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
   },
   appointmentDuration: {
-    ...theme.typography.body,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.xs,
+  },
+  durationText: {
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.bodySmall.fontWeight,
     color: theme.colors.textSecondary,
   },
   serviceForm: {
@@ -1305,5 +1482,109 @@ const styles = StyleSheet.create({
   },
   logoutText: {
     color: theme.colors.destructive,
+  },
+  dateInput: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.md,
+    padding: theme.spacing.md,
+    marginBottom: theme.spacing.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  dateInputText: {
+    ...theme.typography.body,
+    color: theme.colors.text,
+  },
+  calendarModal: {
+    backgroundColor: theme.colors.background,
+    borderTopLeftRadius: theme.borderRadius.lg,
+    borderTopRightRadius: theme.borderRadius.lg,
+    padding: theme.spacing.lg,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: theme.spacing.md,
+  },
+  modalTitle: {
+    ...theme.typography.h3,
+    color: theme.colors.text,
+  },
+  timeSlotsContainer: {
+    marginTop: theme.spacing.md,
+  },
+  timeSlotsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.sm,
+  },
+  timeSlotCard: {
+    width: '48%',
+    backgroundColor: theme.colors.background,
+    borderRadius: theme.borderRadius.lg,
+    padding: theme.spacing.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  timeSlotHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: theme.spacing.sm,
+  },
+  timeSlotTime: {
+    fontSize: theme.typography.h4.fontSize,
+    fontWeight: theme.typography.h4.fontWeight,
+    color: theme.colors.text,
+  },
+  appointmentStatus: {
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+    borderRadius: theme.borderRadius.sm,
+  },
+  statusConfirmed: {
+    backgroundColor: theme.colors.success,
+  },
+  statusPending: {
+    backgroundColor: theme.colors.warning,
+  },
+  appointmentStatusText: {
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.bodySmall.fontWeight,
+    color: theme.colors.primaryForeground,
+  },
+  appointmentContent: {
+    gap: theme.spacing.xs,
+  },
+  customerName: {
+    fontSize: theme.typography.body.fontSize,
+    fontWeight: '600',
+    color: theme.colors.text,
+  },
+  emptySlot: {
+    padding: theme.spacing.sm,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.md,
+    alignItems: 'center',
+  },
+  emptySlotText: {
+    fontSize: theme.typography.body.fontSize,
+    fontWeight: theme.typography.body.fontWeight,
+    color: theme.colors.textSecondary,
+  },
+  closedMessage: {
+    padding: theme.spacing.lg,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.lg,
+    alignItems: 'center',
+  },
+  closedMessageText: {
+    fontSize: theme.typography.body.fontSize,
+    fontWeight: theme.typography.body.fontWeight,
+    color: theme.colors.error,
   },
 }); 

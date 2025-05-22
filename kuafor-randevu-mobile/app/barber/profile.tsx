@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { getAuth, signOut } from 'firebase/auth';
 import { getFirestore, doc, getDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import NotificationList from '@/components/NotificationList';
+import { Calendar } from 'react-native-calendars';
 
 const defaultImage = require('@/assets/images/default.jpg');
 
@@ -51,6 +52,7 @@ interface Appointment {
   duration: number;
   status: 'pending' | 'confirmed' | 'cancelled' | 'rejected' | 'completed';
   createdAt: any;
+  customerName?: string;
 }
 
 interface Statistics {
@@ -60,6 +62,14 @@ interface Statistics {
   monthlyServices: number;
   lastMonthServices: number;
   averageDuration: number;
+}
+
+interface UserData {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  role: string;
 }
 
 export default function BarberProfileScreen() {
@@ -86,6 +96,8 @@ export default function BarberProfileScreen() {
   const [editedWorkingHours, setEditedWorkingHours] = useState<BarberProfile['workingHours']>({});
   const [showNotifications, setShowNotifications] = useState(false);
   const [notificationCount, setNotificationCount] = useState(0);
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [markedDates, setMarkedDates] = useState({});
 
   // Varsayılan çalışma saatleri
   const defaultWorkingHours = {
@@ -109,6 +121,17 @@ export default function BarberProfileScreen() {
       setEditedWorkingHours(profile.workingHours);
     }
   }, [profile]);
+
+  useEffect(() => {
+    if (selectedDate) {
+      setMarkedDates({
+        [selectedDate]: {
+          selected: true,
+          selectedColor: theme.colors.primary,
+        },
+      });
+    }
+  }, [selectedDate]);
 
   const fetchBarberProfile = async () => {
     try {
@@ -154,15 +177,29 @@ export default function BarberProfileScreen() {
       const appointmentsQuery = query(
         collection(db, 'appointments'),
         where('barberId', '==', barberId),
+        where('employeeId', '==', barberId),
         where('date', '==', selectedDate),
         where('status', 'in', ['pending', 'confirmed'])
       );
 
       const querySnapshot = await getDocs(appointmentsQuery);
-      const appointmentsData = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Appointment[];
+      const appointmentsData = await Promise.all(
+        querySnapshot.docs.map(async (docSnapshot) => {
+          const appointmentData = docSnapshot.data();
+          
+          // Müşteri bilgilerini getir
+          const userRef = doc(db, 'users', appointmentData.userId);
+          const userDoc = await getDoc(userRef);
+          const userData = userDoc.data() as UserData | undefined;
+          
+          return {
+            id: docSnapshot.id,
+            ...appointmentData,
+            customerName: userData ? `${userData.firstName} ${userData.lastName}` : 'Bilinmeyen Müşteri'
+          } as Appointment;
+        })
+      );
+      
       setAppointments(appointmentsData);
     } catch (error) {
       console.error('Error fetching appointments:', error);
@@ -310,6 +347,57 @@ export default function BarberProfileScreen() {
     }
   };
 
+  const generateTimeSlots = (startTime: string, endTime: string, interval: number = 30) => {
+    const slots = [];
+    const [startHour, startMinute] = startTime.split(':').map(Number);
+    const [endHour, endMinute] = endTime.split(':').map(Number);
+    
+    let currentTime = new Date();
+    currentTime.setHours(startHour, startMinute, 0);
+    
+    const endDateTime = new Date();
+    endDateTime.setHours(endHour, endMinute, 0);
+    
+    while (currentTime < endDateTime) {
+      slots.push(
+        currentTime.toLocaleTimeString('tr-TR', {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        })
+      );
+      currentTime.setMinutes(currentTime.getMinutes() + interval);
+    }
+    
+    return slots;
+  };
+
+  const isTimeSlotOccupied = (time: string, appointments: Appointment[]) => {
+    const [hour, minute] = time.split(':').map(Number);
+    const slotStartTime = hour * 60 + minute;
+
+    return appointments.some(appointment => {
+      const [appHour, appMinute] = appointment.time.split(':').map(Number);
+      const appStartTime = appHour * 60 + appMinute;
+      const appEndTime = appStartTime + appointment.duration;
+
+      return slotStartTime >= appStartTime && slotStartTime < appEndTime;
+    });
+  };
+
+  const getAppointmentForTimeSlot = (time: string, appointments: Appointment[]) => {
+    const [hour, minute] = time.split(':').map(Number);
+    const slotStartTime = hour * 60 + minute;
+
+    return appointments.find(appointment => {
+      const [appHour, appMinute] = appointment.time.split(':').map(Number);
+      const appStartTime = appHour * 60 + appMinute;
+      const appEndTime = appStartTime + appointment.duration;
+
+      return slotStartTime >= appStartTime && slotStartTime < appEndTime;
+    });
+  };
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -347,9 +435,9 @@ export default function BarberProfileScreen() {
               </View>
             )}
           </TouchableOpacity>
-          <TouchableOpacity onPress={handleMenuPress} style={styles.menuButton}>
-            <Ionicons name="menu" size={24} color={theme.colors.text} />
-          </TouchableOpacity>
+        <TouchableOpacity onPress={handleMenuPress} style={styles.menuButton}>
+          <Ionicons name="menu" size={24} color={theme.colors.text} />
+        </TouchableOpacity>
         </View>
       </View>
 
@@ -494,6 +582,138 @@ export default function BarberProfileScreen() {
           </View>
         </View>
 
+        {/* Randevular */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Randevular</Text>
+            <TouchableOpacity onPress={() => router.push('/barber/appointments')}>
+              <Text style={styles.seeAllButton}>Tümünü Gör</Text>
+            </TouchableOpacity>
+          </View>
+          
+          {/* Tarih Seçici */}
+          <TouchableOpacity
+            style={styles.dateInput}
+            onPress={() => setShowCalendar(true)}
+          >
+            <Text style={styles.dateInputText}>
+              {selectedDate ? new Date(selectedDate).toLocaleDateString('tr-TR', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+              }) : 'Tarih seçin'}
+            </Text>
+            <Ionicons name="calendar-outline" size={24} color={theme.colors.textSecondary} />
+          </TouchableOpacity>
+
+          {/* Takvim Modal */}
+          <Modal
+            visible={showCalendar}
+            transparent
+            animationType="slide"
+            onRequestClose={() => setShowCalendar(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.calendarModal}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Tarih Seçin</Text>
+                  <TouchableOpacity onPress={() => setShowCalendar(false)}>
+                    <Ionicons name="close" size={24} color={theme.colors.text} />
+                  </TouchableOpacity>
+                </View>
+                <Calendar
+                  onDayPress={(day: { dateString: string }) => {
+                    setSelectedDate(day.dateString);
+                    setShowCalendar(false);
+                  }}
+                  markedDates={markedDates}
+                  minDate={new Date().toISOString().split('T')[0]}
+                  theme={{
+                    todayTextColor: theme.colors.primary,
+                    selectedDayBackgroundColor: theme.colors.primary,
+                    selectedDayTextColor: '#ffffff',
+                    arrowColor: theme.colors.primary,
+                  }}
+                />
+              </View>
+            </View>
+          </Modal>
+
+          {/* Saatlik Randevu Listesi */}
+          <View style={styles.timeSlotsContainer}>
+            {(() => {
+              const today = new Date(selectedDate).toLocaleDateString('tr-TR', { weekday: 'long' });
+              const workingHours = profile.workingHours[today] || { start: '09:00', end: '18:00', isClosed: false };
+              
+              if (workingHours.isClosed) {
+                return (
+                  <View style={styles.closedMessage}>
+                    <Text style={styles.closedMessageText}>Bugün kapalı</Text>
+                  </View>
+                );
+              }
+
+              const timeSlots = generateTimeSlots(workingHours.start, workingHours.end, 30);
+              
+              return (
+                <View style={styles.timeSlotsGrid}>
+                  {timeSlots.map((time) => {
+                    const isOccupied = isTimeSlotOccupied(time, appointments);
+                    const appointment = getAppointmentForTimeSlot(time, appointments);
+                    const isExactTime = appointment?.time === time;
+                    
+                    return (
+                      <TouchableOpacity
+                        key={time}
+                        style={styles.timeSlotCard}
+                        onPress={() => {
+                          if (isOccupied) {
+                            router.push('/barber/appointments');
+                          }
+                        }}
+                        disabled={!isOccupied}
+                      >
+                        <View style={styles.timeSlotHeader}>
+                          <Text style={styles.timeSlotTime}>{time}</Text>
+                          {appointment && (
+                            <View style={[
+                              styles.appointmentStatus,
+                              appointment.status === 'confirmed' ? styles.statusConfirmed : styles.statusPending
+                            ]}>
+                              <Text style={styles.appointmentStatusText}>
+                                {appointment.status === 'confirmed' ? 'Onaylandı' : 'Beklemede'}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                        
+                        {isOccupied ? (
+                          <View style={styles.appointmentContent}>
+                            <View style={styles.appointmentInfo}>
+                              <Text style={styles.customerName}>{appointment?.customerName || 'Müşteri'}</Text>
+                              <Text style={styles.serviceName}>
+                                {isExactTime ? appointment?.service : 'Devam eden hizmet'}
+                              </Text>
+                            </View>
+                            <View style={styles.appointmentDuration}>
+                              <Ionicons name="time-outline" size={16} color={theme.colors.textSecondary} />
+                              <Text style={styles.durationText}>{appointment?.duration || 0} dk</Text>
+                            </View>
+                          </View>
+                        ) : (
+                          <View style={styles.emptySlot}>
+                            <Text style={styles.emptySlotText}>Boş</Text>
+                          </View>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              );
+            })()}
+          </View>
+        </View>
+
         {/* Hizmetler */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -591,34 +811,6 @@ export default function BarberProfileScreen() {
                   </View>
                 </View>
               ))
-            )}
-          </View>
-        </View>
-
-        {/* Randevular */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Randevular</Text>
-            <TouchableOpacity onPress={() => router.push('/barber/appointments')}>
-              <Text style={styles.seeAllButton}>Tümünü Gör</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.appointmentsContainer}>
-            {appointments.length > 0 ? (
-              appointments.map((appointment) => (
-                <View key={appointment.id} style={styles.appointmentCard}>
-                  <View style={styles.appointmentInfo}>
-                    <Text style={styles.appointmentService}>{appointment.service}</Text>
-                    <Text style={styles.appointmentEmployee}>{appointment.employeeName}</Text>
-                  </View>
-                  <View style={styles.appointmentTime}>
-                    <Text style={styles.appointmentTimeText}>{appointment.time}</Text>
-                    <Text style={styles.appointmentDuration}>{appointment.duration} dk</Text>
-                  </View>
-                </View>
-              ))
-            ) : (
-              <Text style={styles.noAppointments}>Seçili tarih için randevu bulunmuyor</Text>
             )}
           </View>
         </View>
@@ -800,6 +992,7 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
   },
   menuContainer: {
     position: 'absolute',
@@ -892,9 +1085,8 @@ const styles = StyleSheet.create({
     padding: theme.spacing.lg,
   },
   serviceName: {
-    ...theme.typography.h4,
-    color: theme.colors.text,
-    marginBottom: theme.spacing.sm,
+    ...theme.typography.bodySmall,
+    color: theme.colors.textSecondary,
   },
   serviceDetails: {
     flexDirection: 'row',
@@ -927,7 +1119,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   appointmentInfo: {
-    flex: 1,
+    gap: theme.spacing.xs,
   },
   appointmentService: {
     ...theme.typography.body,
@@ -947,8 +1139,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   appointmentDuration: {
-    ...theme.typography.bodySmall,
-    color: theme.colors.textSecondary,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   noAppointments: {
     ...theme.typography.body,
@@ -1194,5 +1386,110 @@ const styles = StyleSheet.create({
     ...theme.typography.body,
     color: theme.colors.primaryForeground,
     fontWeight: '600',
+  },
+  dateInput: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.md,
+    padding: theme.spacing.md,
+    marginBottom: theme.spacing.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  dateInputText: {
+    ...theme.typography.body,
+    color: theme.colors.text,
+  },
+  calendarModal: {
+    backgroundColor: theme.colors.background,
+    borderTopLeftRadius: theme.borderRadius.lg,
+    borderTopRightRadius: theme.borderRadius.lg,
+    padding: theme.spacing.lg,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: theme.spacing.md,
+  },
+  modalTitle: {
+    ...theme.typography.h3,
+    color: theme.colors.text,
+  },
+  timeSlotsContainer: {
+    marginTop: theme.spacing.md,
+  },
+  timeSlotsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.sm,
+  },
+  timeSlotCard: {
+    width: '48%',
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.lg,
+    padding: theme.spacing.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  timeSlotHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: theme.spacing.sm,
+  },
+  timeSlotTime: {
+    ...theme.typography.h4,
+    color: theme.colors.text,
+  },
+  appointmentStatus: {
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+    borderRadius: theme.borderRadius.sm,
+  },
+  statusConfirmed: {
+    backgroundColor: theme.colors.success,
+  },
+  statusPending: {
+    backgroundColor: theme.colors.warning,
+  },
+  appointmentStatusText: {
+    ...theme.typography.bodySmall,
+    color: theme.colors.primaryForeground,
+  },
+  appointmentContent: {
+    gap: theme.spacing.xs,
+  },
+  customerName: {
+    ...theme.typography.body,
+    color: theme.colors.text,
+    fontWeight: '600',
+  },
+  durationText: {
+    ...theme.typography.bodySmall,
+    color: theme.colors.textSecondary,
+    marginLeft: theme.spacing.xs,
+  },
+  emptySlot: {
+    padding: theme.spacing.sm,
+    backgroundColor: theme.colors.background,
+    borderRadius: theme.borderRadius.md,
+    alignItems: 'center',
+  },
+  emptySlotText: {
+    ...theme.typography.body,
+    color: theme.colors.textSecondary,
+  },
+  closedMessage: {
+    padding: theme.spacing.lg,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.lg,
+    alignItems: 'center',
+  },
+  closedMessageText: {
+    ...theme.typography.body,
+    color: theme.colors.error,
   },
 }); 

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { auth, db } from '@/config/firebase';
 import { doc, getDoc, updateDoc, collection, addDoc, deleteDoc, query, where, getDocs } from 'firebase/firestore';
 import { updateProfile, signOut, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
-import { User, Calendar, Bell, Edit2, X, Menu, LogOut, Loader2, MapPin, Phone, Mail, Clock, Plus, Trash2, Scissors } from 'lucide-react';
+import { User, Calendar, Bell, Edit2, X, Menu, LogOut, Loader2, MapPin, Phone, Mail, Clock, Plus, Trash2, Scissors, Home } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import Image from 'next/image';
 import NotificationList from '../components/NotificationList';
@@ -77,6 +77,24 @@ const DEFAULT_WORKING_HOURS: WorkingHours[] = DAYS.map(day => ({
   closeTime: '18:00'
 }));
 
+// Bitiş saati hesaplama fonksiyonu
+const calculateEndTime = (startTime: string, duration: number): string => {
+  const [hours, minutes] = startTime.split(':').map(Number);
+  const totalMinutes = hours * 60 + minutes + duration;
+  const endHours = Math.floor(totalMinutes / 60);
+  const endMinutes = totalMinutes % 60;
+  return `${endHours.toString().padStart(2, '0')}:${endMinutes.toString().padStart(2, '0')}`;
+};
+
+// Randevu çakışması kontrolü
+const isTimeSlotOccupied = (timeString: string, appointments: Appointment[]): boolean => {
+  return appointments.some(app => {
+    const appStart = app.time;
+    const appEnd = calculateEndTime(app.time, app.duration);
+    return timeString >= appStart && timeString < appEnd;
+  });
+};
+
 export default function EmployeeProfile() {
   const [profile, setProfile] = useState<EmployeeProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -106,8 +124,12 @@ export default function EmployeeProfile() {
     fetchProfile();
     fetchServices();
     fetchWorkingHours();
-    fetchTodayAppointments();
   }, []);
+
+  // Tarih değiştiğinde randevuları güncelle
+  useEffect(() => {
+    fetchTodayAppointments();
+  }, [selectedDate]);
 
   const fetchProfile = async () => {
     try {
@@ -384,6 +406,11 @@ export default function EmployeeProfile() {
 
   const menuItems = [
     {
+      label: 'Anasayfa',
+      icon: Home,
+      href: '/'
+    },
+    {
       label: 'Randevular',
       icon: Calendar,
       href: '/employee/appointments'
@@ -626,7 +653,7 @@ export default function EmployeeProfile() {
               <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <h3 className="flex items-center text-lg font-semibold">
                   <Calendar className="mr-2 h-5 w-5" />
-                  Bugünkü Randevular
+                  Randevular
                 </h3>
                 <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
                   <div className="relative w-full sm:w-auto">
@@ -637,8 +664,9 @@ export default function EmployeeProfile() {
                       type="date"
                       value={selectedDate}
                       onChange={(e) => setSelectedDate(e.target.value)}
-                      className="w-full sm:w-[200px] pl-10 pr-3 py-2.5 bg-background border-2 border-input rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition text-base font-medium"
+                      className="w-full sm:w-[200px] pl-10 pr-3 py-2.5 bg-background border-2 border-input rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition text-base font-medium cursor-pointer hover:border-primary/50"
                       min={new Date().toISOString().split('T')[0]}
+                      onClick={(e) => e.currentTarget.showPicker()}
                     />
                   </div>
                   <Link
@@ -650,40 +678,92 @@ export default function EmployeeProfile() {
                 </div>
               </div>
 
-              <div className="space-y-4">
-                {todayAppointments.length > 0 ? (
-                  todayAppointments.map((appointment) => (
-                    <div
-                      key={appointment.id}
-                      className="rounded-lg border bg-background p-4"
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {(() => {
+                  // Çalışma saatlerini al
+                  const today = new Date(selectedDate).toLocaleDateString('tr-TR', { weekday: 'long' });
+                  const todayWorkingHours = workingHours.find((wh: WorkingHours) => wh.day === today);
+                  
+                  if (!todayWorkingHours || !todayWorkingHours.isOpen) {
+                    return (
+                      <div className="col-span-full text-center py-8">
+                        <p className="text-lg font-medium text-muted-foreground">Bugün kapalı</p>
+                      </div>
+                    );
+                  }
+
+                  // Randevuları başlangıç saatine göre sırala
+                  const sortedAppointments = [...todayAppointments].sort((a, b) => {
+                    const timeA = a.time.split(':').map(Number);
+                    const timeB = b.time.split(':').map(Number);
+                    return (timeA[0] * 60 + timeA[1]) - (timeB[0] * 60 + timeB[1]);
+                  });
+
+                  // Boş zaman dilimlerini bul
+                  const timeSlots = [];
+                  let currentTime = new Date(`2000-01-01T${todayWorkingHours.openTime}`);
+                  const endTime = new Date(`2000-01-01T${todayWorkingHours.closeTime}`);
+
+                  while (currentTime < endTime) {
+                    const timeString = currentTime.toLocaleTimeString('tr-TR', { 
+                      hour: '2-digit', 
+                      minute: '2-digit',
+                      hour12: false 
+                    });
+                    
+                    // Bu saatteki randevuyu bul
+                    const appointment = sortedAppointments.find(app => app.time === timeString);
+                    const isOccupied = isTimeSlotOccupied(timeString, sortedAppointments);
+                    
+                    timeSlots.push(
+                      <div
+                        key={timeString}
+                        className={`rounded-lg border p-3 transition-colors ${
+                          appointment || isOccupied ? 'border-primary/50 bg-primary/5 hover:bg-primary/10' : 'border-input bg-background hover:bg-accent/5'
+                        }`}
                     >
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-3">
-                          <div className="relative h-10 w-10 overflow-hidden rounded-full">
-                            <Image
-                              src="/images/default-avatar.jpg"
-                              alt={appointment.customerName || 'Müşteri'}
-                              fill
-                              className="object-cover"
-                            />
+                          <div className="flex items-center gap-2">
+                            <div className="w-16 text-center">
+                              <span className="font-medium">{timeString}</span>
+                              {appointment && (
+                                <span className="block text-xs text-muted-foreground">
+                                  {calculateEndTime(appointment.time, appointment.duration)}
+                                </span>
+                              )}
                           </div>
-                          <div>
-                            <h4 className="font-medium">{appointment.service}</h4>
-                            <p className="text-sm text-muted-foreground">
+                            {appointment ? (
+                              <div className="flex-1 min-w-0">
+                                <h4 className="font-medium truncate">{appointment.service}</h4>
+                                <p className="text-xs text-muted-foreground truncate">
                               {appointment.customerName}
                             </p>
                           </div>
+                            ) : isOccupied ? (
+                              <div className="flex-1 text-center">
+                                <span className="text-sm text-muted-foreground">Dolu</span>
                         </div>
-                        <div className="text-right">
-                          <p className="font-medium">{appointment.time}</p>
-                          <p className="text-sm text-muted-foreground">{appointment.duration} dk</p>
+                            ) : (
+                              <div className="flex-1 text-center">
+                                <span className="text-sm text-muted-foreground">Boş</span>
+                        </div>
+                            )}
+                      </div>
+                          {appointment && (
+                            <div className="text-right">
+                              <p className="text-xs text-muted-foreground">{appointment.duration} dk</p>
+                    </div>
+                          )}
                         </div>
                       </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-center text-muted-foreground">Seçili tarih için randevu bulunmuyor</p>
-                )}
+                    );
+
+                    // Bir sonraki saat dilimine geç
+                    currentTime.setMinutes(currentTime.getMinutes() + 30);
+                  }
+
+                  return timeSlots;
+                })()}
               </div>
             </div>
 
@@ -835,7 +915,7 @@ export default function EmployeeProfile() {
 
             {/* Çalışma Saatleri Bölümü */}
             <div className="rounded-lg border bg-card p-6">
-              <div className="mb-6 flex items-center justify-between">
+              <div className="mb-4 flex items-center justify-between">
                 <h3 className="flex items-center text-lg font-semibold">
                   <Clock className="mr-2 h-5 w-5" />
                   Çalışma Saatleri
@@ -844,30 +924,16 @@ export default function EmployeeProfile() {
                   onClick={() => setEditingWorkingHours(!editingWorkingHours)}
                   className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
                 >
-                  {editingWorkingHours ? 'Kaydet' : 'Düzenle'}
+                  {editingWorkingHours ? 'İptal' : 'Düzenle'}
                 </button>
               </div>
-
               <div className="space-y-4">
                 {workingHours.map((day) => (
-                  <div key={day.day} className="flex items-center justify-between rounded-lg border bg-background p-4">
-                    <div className="flex items-center space-x-4">
-                      <input
-                        type="checkbox"
-                        checked={day.isOpen}
-                        onChange={(e) => {
-                          const newHours = workingHours.map(h => 
-                            h.day === day.day ? { ...h, isOpen: e.target.checked } : h
-                          );
-                          setWorkingHours(newHours);
-                        }}
-                        disabled={!editingWorkingHours}
-                        className="h-4 w-4 rounded border-input bg-background text-primary focus:ring-primary"
-                      />
+                  <div key={day.day} className="flex items-center justify-between">
                       <span className="font-medium">{day.day}</span>
-                    </div>
+                    <div className="flex items-center space-x-2">
                     {day.isOpen ? (
-                      <div className="flex items-center space-x-4">
+                        <>
                         <input
                           type="time"
                           value={day.openTime}
@@ -877,10 +943,10 @@ export default function EmployeeProfile() {
                             );
                             setWorkingHours(newHours);
                           }}
+                            className="w-24 rounded-md border border-input bg-background px-2 py-1 text-sm"
                           disabled={!editingWorkingHours}
-                          className="rounded-md border border-input bg-background px-3 py-2 text-sm"
                         />
-                        <span className="text-muted-foreground">-</span>
+                          <span>-</span>
                         <input
                           type="time"
                           value={day.closeTime}
@@ -890,36 +956,42 @@ export default function EmployeeProfile() {
                             );
                             setWorkingHours(newHours);
                           }}
+                            className="w-24 rounded-md border border-input bg-background px-2 py-1 text-sm"
                           disabled={!editingWorkingHours}
-                          className="rounded-md border border-input bg-background px-3 py-2 text-sm"
                         />
-                      </div>
+                        </>
                     ) : (
-                      <span className="text-muted-foreground">Kapalı</span>
+                        <span className="text-sm text-muted-foreground">Kapalı</span>
                     )}
-                  </div>
-                ))}
-              </div>
-
               {editingWorkingHours && (
-                <div className="mt-6 flex justify-end space-x-2">
                   <button
                     onClick={() => {
-                      setEditingWorkingHours(false);
-                      fetchWorkingHours(); // Değişiklikleri iptal et
+                            const newHours = workingHours.map(h => 
+                              h.day === day.day ? { ...h, isOpen: !h.isOpen } : h
+                            );
+                            setWorkingHours(newHours);
                     }}
-                    className="rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground"
+                          className="ml-2 rounded-md bg-secondary px-2 py-1 text-xs font-medium text-secondary-foreground hover:bg-secondary/90"
                   >
-                    İptal
+                          {day.isOpen ? 'Kapat' : 'Aç'}
                   </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {editingWorkingHours && (
+                  <div className="flex justify-end">
                   <button
                     onClick={handleUpdateWorkingHours}
-                    className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                      disabled={loading}
+                      className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                   >
+                      {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Kaydet
                   </button>
                 </div>
               )}
+              </div>
             </div>
           </div>
         </div>

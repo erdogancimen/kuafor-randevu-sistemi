@@ -5,7 +5,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { doc, getDoc, collection, addDoc, serverTimestamp, query, where, getDocs, DocumentReference, updateDoc, orderBy } from 'firebase/firestore';
 import { db, auth } from '@/config/firebase';
 import Image from 'next/image';
-import { MapPin, Star, Clock, Scissors, Phone, Mail, Calendar, Loader2, Home, Check, X, Users } from 'lucide-react';
+import { MapPin, Star, Clock, Scissors, Phone, Mail, Calendar, Loader2, Home, Check, X, Users, Navigation } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import ReviewList from '@/components/forms/ReviewList';
 import FavoriteButton from '@/components/common/FavoriteButton';
@@ -33,6 +33,8 @@ interface Barber {
       isClosed?: boolean;
     };
   };
+  latitude?: number;
+  longitude?: number;
 }
 
 interface BarberStats {
@@ -124,6 +126,13 @@ export default function BarberDetailPage() {
     } catch (error) {
       console.error('Error completing appointment:', error);
       toast.error('Randevu tamamlanırken bir hata oluştu');
+    }
+  };
+
+  const handleShowOnMap = () => {
+    if (barber?.latitude && barber?.longitude) {
+      const url = `https://www.google.com/maps/search/?api=1&query=${barber.latitude},${barber.longitude}`;
+      window.open(url, '_blank');
     }
   };
 
@@ -251,16 +260,13 @@ export default function BarberDetailPage() {
 
   useEffect(() => {
     const fetchAppointments = async () => {
-      if (!barber?.id) return;
+      if (!barber?.id || !selectedDate) return;
 
       try {
-        // Bugünün tarihini al
-        const today = new Date().toISOString().split('T')[0];
-
         const appointmentsQuery = query(
           collection(db, 'appointments'),
           where('barberId', '==', barber.id),
-          where('date', '==', today),
+          where('date', '==', selectedDate),
           where('status', 'in', ['pending', 'confirmed'])
         );
 
@@ -270,7 +276,7 @@ export default function BarberDetailPage() {
           ...doc.data()
         })) as Appointment[];
 
-        setAppointments(appointmentsData);
+        setExistingAppointments(appointmentsData);
       } catch (error) {
         console.error('Error fetching appointments:', error);
         toast.error('Randevular yüklenirken bir hata oluştu');
@@ -278,7 +284,7 @@ export default function BarberDetailPage() {
     };
 
     fetchAppointments();
-  }, [barber?.id]);
+  }, [barber?.id, selectedDate]);
 
   useEffect(() => {
     if (!selectedDate || !selectedEmployee || !selectedService) return;
@@ -287,13 +293,9 @@ export default function BarberDetailPage() {
     if (!selectedServiceData || !selectedServiceData.duration) return;
 
     const dayOfWeek = new Date(selectedDate).toLocaleDateString('tr-TR', { weekday: 'long' });
-    console.log('Selected Day:', dayOfWeek);
-    console.log('Selected Employee Working Hours:', selectedEmployee.workingHours);
     const workingHours = selectedEmployee.workingHours?.[dayOfWeek];
-    console.log('Working Hours for Day:', workingHours);
 
     if (!workingHours || workingHours.isClosed) {
-      console.log('No working hours or closed');
       setAvailableSlots([]);
       return;
     }
@@ -304,17 +306,17 @@ export default function BarberDetailPage() {
     const endTime = endHour * 60 + endMinute;
     const duration = selectedServiceData.duration;
 
-    console.log('Start Time:', startTime);
-    console.log('End Time:', endTime);
-    console.log('Duration:', duration);
-
     const slots: string[] = [];
     for (let time = startTime; time + duration <= endTime; time += 30) {
       const hour = Math.floor(time / 60);
       const minute = time % 60;
       const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
 
+      // Sadece onaylanmış ve bekleyen randevuları kontrol et
       const isAvailable = !existingAppointments.some(appointment => {
+        // Sadece seçili çalışanın randevularını kontrol et
+        if (appointment.employeeId !== selectedEmployee.id) return false;
+
         const [appHour, appMinute] = appointment.time.split(':').map(Number);
         const appStartTime = appHour * 60 + appMinute;
         const appEndTime = appStartTime + appointment.duration;
@@ -330,7 +332,6 @@ export default function BarberDetailPage() {
       }
     }
 
-    console.log('Available Slots:', slots);
     setAvailableSlots(slots);
   }, [selectedDate, selectedService, selectedEmployee, existingAppointments]);
 
@@ -479,6 +480,15 @@ export default function BarberDetailPage() {
                 <span className="ml-2 text-sm text-gray-400">
                   ({barberStats.totalReviews} değerlendirme)
                 </span>
+                {barber.latitude && barber.longitude && (
+                  <button
+                    onClick={handleShowOnMap}
+                    className="ml-4 flex items-center space-x-1 text-sm text-primary hover:text-primary/80 transition-colors"
+                  >
+                    <Navigation className="w-4 h-4" />
+                    <span>Haritada Göster</span>
+                  </button>
+                )}
               </div>
               <div className="mt-4 flex flex-wrap justify-center md:justify-start gap-4">
                 <div className="flex items-center text-white/70">

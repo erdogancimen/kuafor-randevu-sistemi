@@ -7,9 +7,8 @@ import { collection, query, where, getDocs, orderBy, limit, getDoc, doc } from '
 import { db } from '@/config/firebase';
 import { signOut } from 'firebase/auth';
 import Image from 'next/image';
-import { MapPin, Star, Clock, LogOut, Search, Map, Filter, Calendar, User, ChevronRight, X } from 'lucide-react';
+import { MapPin, Star, Clock, LogOut, Search, Map, Filter, Calendar, User, ChevronRight, X, Navigation } from 'lucide-react';
 import NotificationList from '@/components/notifications/NotificationList';
-import AIAssistant from '@/components/AIAssistant';
 import React from 'react';
 
 interface Barber {
@@ -524,6 +523,14 @@ export default function Home() {
       return `${hours.start} - ${hours.end}`;
     };
 
+    const handleShowOnMap = (e: React.MouseEvent) => {
+      e.stopPropagation(); // Kartın tıklama olayını engelle
+      if (barber.latitude && barber.longitude) {
+        const url = `https://www.google.com/maps/search/?api=1&query=${barber.latitude},${barber.longitude}`;
+        window.open(url, '_blank');
+      }
+    };
+
     return (
       <div
         onClick={() => router.push(`/barber/${barber.id}`)}
@@ -566,6 +573,15 @@ export default function Home() {
               <Clock className="w-4 h-4 mr-1" />
               <span>{getWorkingHours()}</span>
             </div>
+            {barber.latitude && barber.longitude && (
+              <button
+                onClick={handleShowOnMap}
+                className="mt-2 flex items-center space-x-1 text-sm text-primary hover:text-primary/80 transition-colors"
+              >
+                <Navigation className="w-4 h-4" />
+                <span>Haritada Göster</span>
+              </button>
+            )}
           </div>
           <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-primary transition" />
         </div>
@@ -776,8 +792,6 @@ export default function Home() {
           </section>
         )}
       </div>
-
-      <AIAssistant />
     </main>
   );
 }

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { auth, db } from '@/config/firebase';
 import { collection, query, where, getDocs, orderBy, doc, updateDoc, Timestamp } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
-import { Calendar, Clock, User, Loader2, AlertCircle, MapPin, Star } from 'lucide-react';
+import { Calendar, Clock, User, Loader2, AlertCircle, MapPin, Star, Home } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import Image from 'next/image';
 
@@ -144,9 +144,18 @@ export default function AppointmentsPage() {
   return (
     <div className="min-h-screen bg-gray-900">
       <div className="container mx-auto px-4 py-8">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-white">Randevularım</h1>
-          <p className="text-gray-400 mt-1">Tüm randevularınızı buradan görüntüleyebilirsiniz</p>
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h1 className="text-2xl font-bold text-white">Randevularım</h1>
+            <p className="text-gray-400 mt-1">Tüm randevularınızı buradan görüntüleyebilirsiniz</p>
+          </div>
+          <button
+            onClick={() => router.push('/')}
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
+          >
+            <Home className="h-5 w-5 mr-2" />
+            Anasayfa
+          </button>
         </div>
 
         {appointments.length === 0 ? (

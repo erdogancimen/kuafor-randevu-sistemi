@@ -10,6 +10,8 @@ import {
   Alert,
   Modal,
   TextInput,
+  Platform,
+  Linking,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { theme } from '@/utils/theme';
@@ -27,6 +29,8 @@ interface Barber {
   address: string;
   rating: number;
   imageUrl?: string;
+  latitude?: number;
+  longitude?: number;
   services?: {
     name: string;
     price: number;
@@ -108,6 +112,17 @@ export default function BarberDetailPage() {
   const [markedDates, setMarkedDates] = useState({});
   const [reviews, setReviews] = useState<Review[]>([]);
   const [reviewsLoading, setReviewsLoading] = useState(true);
+
+  // Varsayılan çalışma saatleri
+  const defaultWorkingHours = {
+    'Pazartesi': { start: '09:00', end: '18:00', isClosed: false },
+    'Salı': { start: '09:00', end: '18:00', isClosed: false },
+    'Çarşamba': { start: '09:00', end: '18:00', isClosed: false },
+    'Perşembe': { start: '09:00', end: '18:00', isClosed: false },
+    'Cuma': { start: '09:00', end: '18:00', isClosed: false },
+    'Cumartesi': { start: '10:00', end: '16:00', isClosed: false },
+    'Pazar': { start: '00:00', end: '00:00', isClosed: true }
+  };
 
   useEffect(() => {
     const fetchBarberAndEmployees = async () => {
@@ -259,14 +274,13 @@ export default function BarberDetailPage() {
 
   useEffect(() => {
     const fetchAppointments = async () => {
-      if (!barber?.id) return;
+      if (!barber?.id || !selectedDate) return;
 
       try {
-        const today = new Date().toISOString().split('T')[0];
         const appointmentsQuery = query(
           collection(db, 'appointments'),
           where('barberId', '==', barber.id),
-          where('date', '==', today),
+          where('date', '==', selectedDate),
           where('status', 'in', ['pending', 'confirmed'])
         );
 
@@ -284,7 +298,7 @@ export default function BarberDetailPage() {
     };
 
     fetchAppointments();
-  }, [barber?.id]);
+  }, [barber?.id, selectedDate]);
 
   useEffect(() => {
     if (!selectedDate || !selectedEmployee || !selectedService) return;
@@ -312,7 +326,11 @@ export default function BarberDetailPage() {
       const minute = time % 60;
       const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
 
+      // Sadece onaylanmış ve bekleyen randevuları kontrol et
       const isAvailable = !existingAppointments.some(appointment => {
+        // Sadece seçili çalışanın randevularını kontrol et
+        if (appointment.employeeId !== selectedEmployee.id) return false;
+
         const [appHour, appMinute] = appointment.time.split(':').map(Number);
         const appStartTime = appHour * 60 + appMinute;
         const appEndTime = appStartTime + appointment.duration;
@@ -416,6 +434,25 @@ export default function BarberDetailPage() {
     }
   };
 
+  const handleShowOnMap = () => {
+    if (!barber?.latitude || !barber?.longitude) return;
+
+    const scheme = Platform.select({
+      ios: 'maps:',
+      android: 'geo:'
+    });
+    const latLng = `${barber.latitude},${barber.longitude}`;
+    const label = `${barber.firstName} ${barber.lastName}`;
+    const url = Platform.select({
+      ios: `${scheme}?q=${label}&ll=${latLng}`,
+      android: `${scheme}?q=${latLng}(${label})`
+    });
+
+    if (url) {
+      Linking.openURL(url);
+    }
+  };
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -467,6 +504,15 @@ export default function BarberDetailPage() {
                 ({barberStats.totalReviews} değerlendirme)
               </Text>
             </View>
+            {barber.latitude && barber.longitude && (
+              <TouchableOpacity
+                style={styles.mapButton}
+                onPress={handleShowOnMap}
+              >
+                <Ionicons name="navigate" size={20} color={theme.colors.primary} />
+                <Text style={styles.mapButtonText}>Haritada Göster</Text>
+              </TouchableOpacity>
+            )}
             <View style={styles.infoContainer}>
               <View style={styles.infoItem}>
                 <Ionicons name="location-outline" size={20} color={theme.colors.textSecondary} />
@@ -615,6 +661,23 @@ export default function BarberDetailPage() {
                           selectedDayTextColor: '#ffffff',
                           arrowColor: theme.colors.primary,
                         }}
+                        firstDay={1}
+                        monthFormat="MMMM yyyy"
+                        dayNames={['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz']}
+                        monthNames={[
+                          'Ocak',
+                          'Şubat',
+                          'Mart',
+                          'Nisan',
+                          'Mayıs',
+                          'Haziran',
+                          'Temmuz',
+                          'Ağustos',
+                          'Eylül',
+                          'Ekim',
+                          'Kasım',
+                          'Aralık'
+                        ]}
                       />
                     </View>
                   </View>
@@ -678,14 +741,17 @@ export default function BarberDetailPage() {
         {selectedEmployee && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Çalışma Saatleri</Text>
-            {Object.entries(selectedEmployee.workingHours || {}).map(([day, hours]) => (
-              <View key={day} style={styles.workingHoursCard}>
-                <Text style={styles.dayText}>{day}</Text>
-                <Text style={styles.hoursText}>
-                  {hours.isClosed ? 'Kapalı' : `${hours.start} - ${hours.end}`}
-                </Text>
-              </View>
-            ))}
+            {Object.entries(defaultWorkingHours).map(([day, defaultHours]) => {
+              const hours = selectedEmployee.workingHours?.[day] || defaultHours;
+              return (
+                <View key={day} style={styles.workingHoursCard}>
+                  <Text style={styles.dayText}>{day}</Text>
+                  <Text style={styles.hoursText}>
+                    {hours.isClosed ? 'Kapalı' : `${hours.start} - ${hours.end}`}
+                  </Text>
+                </View>
+              );
+            })}
           </View>
         )}
 
@@ -801,7 +867,7 @@ const styles = StyleSheet.create({
   ratingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: theme.spacing.md,
+    marginBottom: theme.spacing.sm,
   },
   ratingText: {
     ...theme.typography.body,
@@ -1067,5 +1133,22 @@ const styles = StyleSheet.create({
   reviewDate: {
     ...theme.typography.bodySmall,
     color: theme.colors.textSecondary,
+  },
+  mapButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.primary + '20',
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    borderRadius: theme.borderRadius.md,
+    gap: theme.spacing.sm,
+    marginBottom: theme.spacing.md,
+    alignSelf: 'center',
+  },
+  mapButtonText: {
+    ...theme.typography.body,
+    color: theme.colors.primary,
+    fontWeight: '500',
   },
 }); 

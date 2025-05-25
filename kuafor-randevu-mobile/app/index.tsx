@@ -9,6 +9,8 @@ import {
   TextInput,
   ActivityIndicator,
   Dimensions,
+  Platform,
+  Linking,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { theme } from '@/utils/theme';
@@ -29,7 +31,7 @@ const { width } = Dimensions.get('window');
 interface WorkingHours {
   start: string;
   end: string;
-  isClosed: boolean;
+  isClosed?: boolean;
 }
 
 interface Barber {
@@ -259,15 +261,13 @@ export default function HomeScreen() {
   };
 
   const getWorkingHours = (workingHours: Record<string, WorkingHours>) => {
-    if (!workingHours) return 'Çalışma saatleri bilgisi yok';
+    if (!workingHours) return 'Çalışma saatleri belirtilmemiş';
     
     try {
       const today = new Date().toLocaleDateString('tr-TR', { weekday: 'long' });
       const todayHours = workingHours[today];
-
-      if (todayHours?.isClosed) return 'Bugün kapalı';
-      if (!todayHours) return 'Çalışma saatleri bilgisi yok';
-
+      
+      if (!todayHours || todayHours.isClosed) return 'Bugün kapalı';
       return `${todayHours.start} - ${todayHours.end}`;
     } catch (error) {
       return 'Çalışma saatleri bilgisi yok';
@@ -341,6 +341,25 @@ export default function HomeScreen() {
     }
   }, [location]);
 
+  const handleShowOnMap = (barber: Barber) => {
+    if (!barber.latitude || !barber.longitude) return;
+
+    const scheme = Platform.select({
+      ios: 'maps:',
+      android: 'geo:'
+    });
+    const latLng = `${barber.latitude},${barber.longitude}`;
+    const label = `${barber.firstName} ${barber.lastName}`;
+    const url = Platform.select({
+      ios: `${scheme}?q=${label}&ll=${latLng}`,
+      android: `${scheme}?q=${latLng}(${label})`
+    });
+
+    if (url) {
+      Linking.openURL(url);
+    }
+  };
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -348,6 +367,63 @@ export default function HomeScreen() {
       </View>
     );
   }
+
+  const BarberCard = ({ barber, isVertical = false }: { barber: Barber; isVertical?: boolean }) => (
+    <TouchableOpacity
+      style={[styles.barberCard, isVertical && styles.barberCardVertical]}
+      onPress={() => router.push({
+        pathname: '/barber/[id]',
+        params: { id: barber.id }
+      })}
+    >
+      <Image
+        source={barber.photoURL || DEFAULT_IMAGES.barber}
+        style={[styles.barberImage, isVertical && styles.barberImageVertical]}
+      />
+      <View style={styles.barberInfo}>
+        <Text style={styles.barberName}>
+          {barber.firstName} {barber.lastName}
+        </Text>
+        <View style={styles.barberRating}>
+          <Ionicons name="star" size={16} color={theme.colors.warning} />
+          <Text style={styles.ratingText}>
+            {barber.stats?.averageRating ? barber.stats.averageRating.toFixed(1) : '0.0'}
+          </Text>
+          <Text style={styles.reviewCount}>
+            ({barber.stats?.totalReviews || 0})
+          </Text>
+        </View>
+        {barber.distance && (
+          <Text style={styles.distanceText}>
+            {barber.distance.toFixed(1)} km uzaklıkta
+          </Text>
+        )}
+        <Text style={styles.workingHours}>
+          {getWorkingHours(barber.workingHours)}
+        </Text>
+        <View style={styles.buttonContainer}>
+          <TouchableOpacity
+            style={styles.appointmentButton}
+            onPress={() => router.push({
+              pathname: '/barber/[id]',
+              params: { id: barber.id }
+            })}
+          >
+            <Text style={styles.appointmentButtonText}>Randevu Oluştur</Text>
+          </TouchableOpacity>
+          {barber.latitude && barber.longitude && (
+            <TouchableOpacity
+              style={styles.mapButton}
+              onPress={() => handleShowOnMap(barber)}
+            >
+              <Ionicons name="navigate" size={16} color={theme.colors.primary} />
+              <Text style={styles.mapButtonText}>Haritada Göster</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
 
   return (
     <ScrollView style={styles.container}>
@@ -481,45 +557,7 @@ export default function HomeScreen() {
                 style={styles.barbersList}
               >
                 {filteredBarbers.popular.map((barber) => (
-                  <TouchableOpacity
-                    key={barber.id}
-                    style={[styles.barberCard, styles.barberCardVertical]}
-                    onPress={() => router.push({
-                      pathname: '/barber/[id]',
-                      params: { id: barber.id }
-                    })}
-                  >
-                    <Image
-                      source={barber.photoURL || DEFAULT_IMAGES.barber}
-                      style={styles.barberImageVertical}
-                    />
-                    <View style={styles.barberInfo}>
-                      <Text style={styles.barberName}>
-                        {barber.firstName} {barber.lastName}
-                      </Text>
-                      <View style={styles.barberRating}>
-                        <Ionicons name="star" size={16} color={theme.colors.warning} />
-                        <Text style={styles.ratingText}>
-                          {barber.stats?.averageRating ? barber.stats.averageRating.toFixed(1) : '0.0'}
-                        </Text>
-                        <Text style={styles.reviewCount}>
-                          ({barber.stats?.totalReviews || 0})
-                        </Text>
-                      </View>
-                      <Text style={styles.workingHours}>
-                        {getWorkingHours(barber.workingHours)}
-                      </Text>
-                      <TouchableOpacity
-                        style={styles.appointmentButton}
-                        onPress={() => router.push({
-                          pathname: '/barber/[id]',
-                          params: { id: barber.id }
-                        })}
-                      >
-                        <Text style={styles.appointmentButtonText}>Randevu Oluştur</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </TouchableOpacity>
+                  <BarberCard key={barber.id} barber={barber} isVertical={false} />
                 ))}
               </ScrollView>
             </>
@@ -535,50 +573,7 @@ export default function HomeScreen() {
                 style={styles.barbersList}
               >
                 {filteredBarbers.nearby.map((barber) => (
-                  <TouchableOpacity
-                    key={barber.id}
-                    style={[styles.barberCard, styles.barberCardVertical]}
-                    onPress={() => router.push({
-                      pathname: '/barber/[id]',
-                      params: { id: barber.id }
-                    })}
-                  >
-                    <Image
-                      source={barber.photoURL || DEFAULT_IMAGES.barber}
-                      style={styles.barberImageVertical}
-                    />
-                    <View style={styles.barberInfo}>
-                      <Text style={styles.barberName}>
-                        {barber.firstName} {barber.lastName}
-                      </Text>
-                      <View style={styles.barberRating}>
-                        <Ionicons name="star" size={16} color={theme.colors.warning} />
-                        <Text style={styles.ratingText}>
-                          {barber.stats?.averageRating ? barber.stats.averageRating.toFixed(1) : '0.0'}
-                        </Text>
-                        <Text style={styles.reviewCount}>
-                          ({barber.stats?.totalReviews || 0})
-                        </Text>
-                      </View>
-                      {barber.distance && (
-                        <Text style={styles.distanceText}>
-                          {barber.distance.toFixed(1)} km uzaklıkta
-                        </Text>
-                      )}
-                      <Text style={styles.workingHours}>
-                        {getWorkingHours(barber.workingHours)}
-                      </Text>
-                      <TouchableOpacity
-                        style={styles.appointmentButton}
-                        onPress={() => router.push({
-                          pathname: '/barber/[id]',
-                          params: { id: barber.id }
-                        })}
-                      >
-                        <Text style={styles.appointmentButtonText}>Randevu Oluştur</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </TouchableOpacity>
+                  <BarberCard key={barber.id} barber={barber} isVertical={false} />
                 ))}
               </ScrollView>
             </>
@@ -602,45 +597,7 @@ export default function HomeScreen() {
           style={[styles.barbersList, showAllPopularBarbers && styles.barbersListVertical]}
         >
           {popularBarbers.map((barber) => (
-            <TouchableOpacity
-              key={barber.id}
-              style={[styles.barberCard, showAllPopularBarbers && styles.barberCardVertical]}
-              onPress={() => router.push({
-                pathname: '/barber/[id]',
-                params: { id: barber.id }
-              })}
-            >
-              <Image
-                source={barber.photoURL || DEFAULT_IMAGES.barber}
-                style={[styles.barberImage, showAllPopularBarbers && styles.barberImageVertical]}
-              />
-              <View style={styles.barberInfo}>
-                <Text style={styles.barberName}>
-                  {barber.firstName} {barber.lastName}
-                </Text>
-                <View style={styles.barberRating}>
-                  <Ionicons name="star" size={16} color={theme.colors.warning} />
-                  <Text style={styles.ratingText}>
-                    {barber.stats?.averageRating ? barber.stats.averageRating.toFixed(1) : '0.0'}
-                  </Text>
-                  <Text style={styles.reviewCount}>
-                    ({barber.stats?.totalReviews || 0})
-                  </Text>
-                </View>
-                <Text style={styles.workingHours}>
-                  {getWorkingHours(barber.workingHours)}
-                </Text>
-                <TouchableOpacity
-                  style={styles.appointmentButton}
-                  onPress={() => router.push({
-                    pathname: '/barber/[id]',
-                    params: { id: barber.id }
-                  })}
-                >
-                  <Text style={styles.appointmentButtonText}>Randevu Oluştur</Text>
-                </TouchableOpacity>
-              </View>
-            </TouchableOpacity>
+            <BarberCard key={barber.id} barber={barber} isVertical={showAllPopularBarbers} />
           ))}
         </ScrollView>
       </View>
@@ -661,45 +618,7 @@ export default function HomeScreen() {
           style={[styles.barbersList, showAllRecentBarbers && styles.barbersListVertical]}
         >
           {recentBarbers.map((barber) => (
-            <TouchableOpacity 
-              key={barber.id}
-              style={[styles.barberCard, showAllRecentBarbers && styles.barberCardVertical]}
-              onPress={() => router.push({
-                pathname: '/barber/[id]',
-                params: { id: barber.id }
-              })}
-            >
-              <Image
-                source={barber.photoURL || DEFAULT_IMAGES.barber}
-                style={[styles.barberImage, showAllRecentBarbers && styles.barberImageVertical]}
-              />
-              <View style={styles.barberInfo}>
-                <Text style={styles.barberName}>
-                  {barber.firstName} {barber.lastName}
-                </Text>
-                <View style={styles.barberRating}>
-                <Ionicons name="star" size={16} color={theme.colors.warning} />
-                  <Text style={styles.ratingText}>
-                    {barber.stats?.averageRating ? barber.stats.averageRating.toFixed(1) : '0.0'}
-                  </Text>
-                  <Text style={styles.reviewCount}>
-                    ({barber.stats?.totalReviews || 0})
-                  </Text>
-                </View>
-                <Text style={styles.workingHours}>
-                  {getWorkingHours(barber.workingHours)}
-                </Text>
-                <TouchableOpacity
-                  style={styles.appointmentButton}
-                  onPress={() => router.push({
-                    pathname: '/barber/[id]',
-                    params: { id: barber.id }
-                  })}
-                >
-                  <Text style={styles.appointmentButtonText}>Randevu Oluştur</Text>
-                </TouchableOpacity>
-              </View>
-            </TouchableOpacity>
+            <BarberCard key={barber.id} barber={barber} isVertical={showAllRecentBarbers} />
           ))}
         </ScrollView>
       </View>
@@ -735,50 +654,7 @@ export default function HomeScreen() {
             style={[styles.barbersList, showAllNearbyBarbers && styles.barbersListVertical]}
           >
             {nearbyBarbers.map((barber) => (
-              <TouchableOpacity
-                key={barber.id}
-                style={[styles.barberCard, showAllNearbyBarbers && styles.barberCardVertical]}
-                onPress={() => router.push({
-                  pathname: '/barber/[id]',
-                  params: { id: barber.id }
-                })}
-              >
-                <Image
-                  source={barber.photoURL || DEFAULT_IMAGES.barber}
-                  style={[styles.barberImage, showAllNearbyBarbers && styles.barberImageVertical]}
-                />
-                <View style={styles.barberInfo}>
-                  <Text style={styles.barberName}>
-                    {barber.firstName} {barber.lastName}
-                  </Text>
-                  <View style={styles.barberRating}>
-                    <Ionicons name="star" size={16} color={theme.colors.warning} />
-                    <Text style={styles.ratingText}>
-                      {barber.stats?.averageRating ? barber.stats.averageRating.toFixed(1) : '0.0'}
-                    </Text>
-                    <Text style={styles.reviewCount}>
-                      ({barber.stats?.totalReviews || 0})
-                    </Text>
-                  </View>
-                  {barber.distance && (
-                    <Text style={styles.distanceText}>
-                      {barber.distance.toFixed(1)} km uzaklıkta
-                    </Text>
-                  )}
-                  <Text style={styles.workingHours}>
-                    {getWorkingHours(barber.workingHours)}
-                  </Text>
-                  <TouchableOpacity
-                    style={styles.appointmentButton}
-                    onPress={() => router.push({
-                      pathname: '/barber/[id]',
-                      params: { id: barber.id }
-                    })}
-                  >
-                    <Text style={styles.appointmentButtonText}>Randevu Oluştur</Text>
-                  </TouchableOpacity>
-                </View>
-              </TouchableOpacity>
+              <BarberCard key={barber.id} barber={barber} isVertical={showAllNearbyBarbers} />
             ))}
           </ScrollView>
         )}
@@ -1061,11 +937,11 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   appointmentButton: {
+    flex: 1,
     backgroundColor: theme.colors.primary,
     paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 8,
-    marginTop: 12,
     alignItems: 'center',
   },
   appointmentButtonText: {
@@ -1107,5 +983,26 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: theme.colors.text,
     marginBottom: 12,
+  },
+  buttonContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+  },
+  mapButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.primary + '20',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    gap: 4,
+  },
+  mapButtonText: {
+    color: theme.colors.primary,
+    fontSize: 14,
+    fontWeight: '500',
   },
 });
